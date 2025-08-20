@@ -2,10 +2,7 @@ package cmd
 
 type MicCliOptions struct {
 
-	/// Port: port to listen to
-	Port int
-
-	/// Addr: address to listen to
+	/// Addr: address to listen to (Golang notation)
 	Addr string
 
 	/// ForwardTo: local port to forward call to
@@ -17,8 +14,7 @@ type MicCliOptions struct {
 
 func GetDefaultOptions() MicCliOptions {
 	opts := MicCliOptions{
-		Port:      8080,
-		Addr:      "127.0.0.1",
+		Addr:      ":8080",
 		ForwardTo: 1337,
 		Verbose:   false,
 	}

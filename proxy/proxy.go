@@ -8,17 +8,16 @@ import (
 type Proxy struct {
 	ListenAddr string
 	ForwardTo  int
+
+	handlers []Handler
 }
 
 // function is a function that processes an incoming client connection
 type Handler func(conn net.Conn, p *Proxy)
 
-// registry for all protocol handlers
-var handlers []Handler
-
 // adds a handler to the orchestrator
-func RegisterHandler(h Handler) {
-	handlers = append(handlers, h)
+func (p *Proxy) RegisterHandler(h Handler) {
+	p.handlers = append(p.handlers, h)
 }
 
 // Run starts the proxy server and orchestrates all protocol handlers
@@ -30,7 +29,6 @@ func (p *Proxy) Run() error {
 	defer ln.Close()
 
 	log.Printf("[+] Starting proxy on %s, forwarding to port %d", p.ListenAddr, p.ForwardTo)
-
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -40,8 +38,9 @@ func (p *Proxy) Run() error {
 
 		conn := c
 		go func() {
-			for _, h := range handlers {
+			for _, h := range p.handlers {
 				// Each handler processes the incoming connection.
+				// It will get discarded by a handler if it doesn't support it.
 				h(conn, p)
 			}
 		}()

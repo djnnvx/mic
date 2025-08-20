@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/djnnvx/mic/proxy"
 	"github.com/spf13/cobra"
 )
 
@@ -45,17 +47,23 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 	var rootCmd = &cobra.Command{
 		Use:   "mic",
 		Short: "modular proxy for network-fingerprinting evasion",
-		Long:  "mic (mina-is-cute) is a proxy supporting HTTP connect & SOCKS5 to evade networking fingerprinting detection",
+		Long:  "mic (mina-is-cute) is a HTTPS proxy to evade networking fingerprinting detection",
 		Run: func(cmd *cobra.Command, args []string) {
-			print("Yaaay...:)")
 
+			log.Printf("[+] only HTTPS supported for now, registering default handler.")
+			p := &proxy.Proxy{
+				ListenAddr: opts.Addr,
+				ForwardTo:  opts.ForwardTo,
+			}
+
+			p.RegisterHandler(proxy.HttpsHandler)
+			p.Run()
 		},
 	}
 
 	defaults := GetDefaultOptions()
 
-	rootCmd.Flags().StringVarP(&opts.Addr, "addr", "a", defaults.Addr, "address to listen to")
-	rootCmd.Flags().IntVarP(&opts.Port, "port", "p", defaults.Port, "port to listen to")
+	rootCmd.Flags().StringVarP(&opts.Addr, "addr", "a", defaults.Addr, "address to listen to (Golang notation)")
 	rootCmd.Flags().IntVarP(&opts.ForwardTo, "forward-to", "t", defaults.ForwardTo, "local port to forward to")
 	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", defaults.Verbose, "enable verbose mode")
 
