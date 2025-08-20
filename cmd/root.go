@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/x509"
 	"fmt"
 	"log"
 	"os"
@@ -56,6 +57,17 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 				ForwardTo:  opts.ForwardTo,
 			}
 
+			if opts.CAPath != "" {
+				caCert, err := os.ReadFile(opts.CAPath)
+				if err != nil {
+					log.Fatalf("Failed to read server certificate: %v", err)
+				}
+
+				caCertPool := x509.NewCertPool()
+				caCertPool.AppendCertsFromPEM(caCert)
+				p.AddCertificate(caCertPool)
+			}
+
 			p.RegisterHandler(proxy.HttpsHandler)
 			p.Run()
 		},
@@ -66,6 +78,7 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 	rootCmd.Flags().StringVarP(&opts.Addr, "addr", "a", defaults.Addr, "address to listen to (Golang notation)")
 	rootCmd.Flags().IntVarP(&opts.ForwardTo, "forward-to", "t", defaults.ForwardTo, "local port to forward to")
 	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", defaults.Verbose, "enable verbose mode")
+	rootCmd.Flags().StringVarP(&opts.CAPath, "ca-cert-path", "c", defaults.CAPath, "custom CA certificate path (optional)")
 
 	return rootCmd
 }

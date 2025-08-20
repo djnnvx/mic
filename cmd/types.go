@@ -10,6 +10,9 @@ type MicCliOptions struct {
 
 	/// Verbose: enable verbose mode
 	Verbose bool
+
+	/// CAPath: Self-signed certificate path (optional)
+	CAPath string
 }
 
 func GetDefaultOptions() MicCliOptions {
@@ -17,6 +20,7 @@ func GetDefaultOptions() MicCliOptions {
 		Addr:      ":8080",
 		ForwardTo: 1337,
 		Verbose:   false,
+		CAPath:    "",
 	}
 
 	return opts

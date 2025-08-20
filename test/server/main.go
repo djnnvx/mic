@@ -24,4 +24,3 @@ func main() {
 		log.Fatalf("Test server failed: %v", err)
 	}
 }
-

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/x509"
 	"log"
 	"net"
 )
@@ -8,6 +9,7 @@ import (
 type Proxy struct {
 	ListenAddr string
 	ForwardTo  int
+	CAPool     *x509.CertPool
 
 	handlers []Handler
 }
@@ -18,6 +20,10 @@ type Handler func(conn net.Conn, p *Proxy)
 // adds a handler to the orchestrator
 func (p *Proxy) RegisterHandler(h Handler) {
 	p.handlers = append(p.handlers, h)
+}
+
+func (p *Proxy) AddCertificate(cert *x509.CertPool) {
+	p.CAPool = cert
 }
 
 // Run starts the proxy server and orchestrates all protocol handlers

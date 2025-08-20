@@ -49,7 +49,6 @@ func main() {
 		log.Fatalf("uTLS handshake failed: %v", err)
 	}
 
-
 	// 6. Extract and print key details from the server's certificate,
 	// which are used to measure the server's JA4 fingerprint.
 	log.Println("\n--- Server Fingerprint Measurement (JA4-like) ---")
