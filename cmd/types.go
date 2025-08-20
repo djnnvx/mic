@@ -8,8 +8,8 @@ type MicCliOptions struct {
 	/// Addr: address to listen to
 	Addr string
 
-	/// CaPath: custom CA certificate path (optional)
-	CaPath string
+	/// ForwardTo: local port to forward call to
+	ForwardTo int
 
 	/// Verbose: enable verbose mode
 	Verbose bool
@@ -17,10 +17,10 @@ type MicCliOptions struct {
 
 func GetDefaultOptions() MicCliOptions {
 	opts := MicCliOptions{
-		Port:    8080,
-		Addr:    "127.0.0.1",
-		CaPath:  "",
-		Verbose: false,
+		Port:      8080,
+		Addr:      "127.0.0.1",
+		ForwardTo: 1337,
+		Verbose:   false,
 	}
 
 	return opts

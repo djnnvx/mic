@@ -1,13 +1,13 @@
 package proxy
 
 import (
-	"crypto/x509"
+	"log"
 	"net"
 )
 
 type Proxy struct {
 	ListenAddr string
-	CAPool *x509.CertPool
+	ForwardTo  int
 }
 
 // function is a function that processes an incoming client connection
@@ -27,16 +27,21 @@ func (p *Proxy) Run() error {
 	if err != nil {
 		return err
 	}
+	defer ln.Close()
+
+	log.Printf("[+] Starting proxy on %s, forwarding to port %d", p.ListenAddr, p.ForwardTo)
 
 	for {
 		c, err := ln.Accept()
 		if err != nil {
-			return err
+			log.Printf("Failed to accept connection: %v", err)
+			continue
 		}
 
 		conn := c
 		go func() {
 			for _, h := range handlers {
+				// Each handler processes the incoming connection.
 				h(conn, p)
 			}
 		}()

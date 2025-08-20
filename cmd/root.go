@@ -55,8 +55,8 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 	defaults := GetDefaultOptions()
 
 	rootCmd.Flags().StringVarP(&opts.Addr, "addr", "a", defaults.Addr, "address to listen to")
-	rootCmd.Flags().StringVarP(&opts.CaPath, "ca-cert-path", "c", defaults.CaPath, "custom CA certificate path (optional)")
 	rootCmd.Flags().IntVarP(&opts.Port, "port", "p", defaults.Port, "port to listen to")
+	rootCmd.Flags().IntVarP(&opts.ForwardTo, "forward-to", "t", defaults.ForwardTo, "local port to forward to")
 	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", defaults.Verbose, "enable verbose mode")
 
 	return rootCmd
