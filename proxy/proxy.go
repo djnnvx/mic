@@ -17,6 +17,7 @@ type Proxy struct {
 	BackendAddr string // server-front: backend host:port
 	CAPool      *x509.CertPool
 	Fingerprint fingerprint.TLSApplier
+	LocalCA     *LocalCA // client-front: MitM CA for TLS interception
 
 	handlers []Handler
 }
@@ -64,19 +65,22 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 }
 
 // pipe copies data bidirectionally between client (reading from r) and target,
-// blocking until both directions are done.
-func pipe(client io.ReadWriter, r io.Reader, target io.ReadWriter) {
+// blocking until both directions are done. When either direction finishes it
+// closes that side's connection so the other goroutine unblocks and exits.
+func pipe(client io.ReadWriteCloser, r io.Reader, target io.ReadWriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
 		io.Copy(target, r)
+		target.Close()
 	}()
 
 	go func() {
 		defer wg.Done()
 		io.Copy(client, target)
+		client.Close()
 	}()
 
 	wg.Wait()

@@ -9,7 +9,7 @@ addr = "127.0.0.1:443"
 
 [fingerprint]
 [fingerprint.tls]
-ja4 = "t13d1516h2_8daaf6152771_b0da82dd1658"   # Chrome 120
+ja4 = "t13d1516h2_8daaf6152771_02713d6af862"   # Chrome 120 (utls.HelloChrome_120)
 
 # server-front only: certificate for terminating incoming TLS
 [fingerprint.tls.termination]
@@ -18,6 +18,13 @@ key  = "/path/to/key.pem"
 
 [ca]
 cert = ""   # optional custom CA for upstream verification
+
+# client-front only: MitM interception CA.
+# mic will create the files on first run, then reuse them across restarts.
+# Import ca.pem into curl / your browser / system trust store.
+[ca.intercept]
+cert = "ca.pem"
+key  = "ca-key.pem"
 
 # Future:
 # [fingerprint.tcp]

@@ -86,6 +86,15 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 			switch cfg.Mode {
 			case "client-front":
 				log.Printf("[+] Mode: client-front (HTTP CONNECT proxy)")
+				if cfg.CA.Intercept.Cert != "" || cfg.CA.Intercept.Key != "" {
+					ca, err := proxy.LoadOrGenerateCA(cfg.CA.Intercept.Cert, cfg.CA.Intercept.Key)
+					if err != nil {
+						log.Fatalf("[!] Failed to load/generate intercept CA: %v", err)
+					}
+					p.LocalCA = ca
+					log.Printf("[+] MitM CA ready — import %s, then: curl --cacert %s -x http://localhost%s https://<target>",
+						cfg.CA.Intercept.Cert, cfg.CA.Intercept.Cert, cfg.Listen.Addr)
+				}
 				p.RegisterHandler(proxy.HttpsHandler)
 			case "server-front":
 				log.Printf("[+] Mode: server-front (TLS termination → backend %s)", cfg.Backend.Addr)

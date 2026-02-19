@@ -7,11 +7,13 @@ browser to any fingerprinting system.
 
 Two modes are supported:
 
-- **client-front** — standard HTTP CONNECT proxy. Your tool (curl, browser, etc.)
-  connects through the proxy; the proxy dials upstream with the configured fingerprint.
-- **server-front** — the proxy terminates incoming TLS (with your cert/key), then
-  re-dials the backend with the configured fingerprint. Useful when the client
-  cannot be configured to use a CONNECT proxy.
+- **client-front** — HTTP CONNECT proxy with MitM TLS interception. The proxy
+  generates a local CA, issues per-host leaf certs on the fly, terminates TLS from
+  the client, and re-dials the target with the configured uTLS fingerprint. Standard
+  tools (curl, browsers) work after importing the CA once.
+- **server-front** — the proxy terminates incoming TLS (with your own cert/key), then
+  re-dials the backend with the configured fingerprint. Useful when the client cannot
+  be configured to use a CONNECT proxy.
 
 ---
 
@@ -24,14 +26,16 @@ sequenceDiagram
     participant T as Target
 
     rect rgb(30, 30, 60)
-        note over C,T: client-front mode
+        note over C,T: client-front mode (MitM TLS)
         C->>P: HTTP CONNECT target:443
-        P-->>C: 200 Connection Established
         P->>T: TCP + uTLS handshake (configured fingerprint)
-        C->>P: raw HTTP bytes
-        P->>T: bytes encrypted in uTLS tunnel
+        P-->>C: 200 Connection Established
+        C->>P: TLS handshake (mic-issued cert for target)
+        P-->>C: TLS established
+        C->>P: HTTP request (decrypted by proxy)
+        P->>T: request bytes (through uTLS tunnel)
         T-->>P: HTTP response (through uTLS)
-        P-->>C: raw HTTP response
+        P-->>C: HTTP response (re-encrypted for client)
     end
 
     rect rgb(30, 60, 30)
@@ -39,8 +43,8 @@ sequenceDiagram
         C->>P: TLS handshake (proxy cert)
         P-->>C: TLS established
         P->>T: TCP + uTLS handshake (configured fingerprint)
-        C->>P: raw HTTP bytes (decrypted by proxy)
-        P->>T: bytes encrypted in uTLS tunnel
+        C->>P: HTTP request (decrypted by proxy)
+        P->>T: request bytes (through uTLS tunnel)
         T-->>P: HTTP response (through uTLS)
         P-->>C: HTTP response (re-encrypted for client)
     end
@@ -57,7 +61,8 @@ not the default Go TLS fingerprint.
 go build -o mic .
 ```
 
-Or with the helper script (builds and creates `mic.toml` from the example):
+Or with the helper script (builds, creates `mic.toml`, starts the proxy, and prints
+CA trust instructions):
 
 ```bash
 scripts/setup.sh
@@ -86,24 +91,37 @@ addr = "127.0.0.1:443"   # server-front only
 [fingerprint.tls]
 ja4 = "t13d1516h2_8daaf6152771_b0da82dd1658"   # Chrome 120
 
-# server-front only
+# server-front only: certificate mic presents to clients
 [fingerprint.tls.termination]
 cert = "/path/to/cert.pem"
 key  = "/path/to/key.pem"
 
 [ca]
-cert = ""   # optional: custom CA for upstream verification
+cert = ""   # optional: custom CA for verifying upstream targets
+
+# client-front only: local MitM CA.
+# mic creates these files on first run and reuses them across restarts.
+# Import ca.pem into curl / your browser / the system trust store.
+[ca.intercept]
+cert = "ca.pem"
+key  = "ca-key.pem"
 ```
 
 ### Available JA4 fingerprints
 
-| JA4 hash | Browser |
+Hashes are measured by `cmd/probe` against tlsinfo.me and reflect what each utls
+preset actually emits. Re-run the probe after upgrading the utls dependency.
+
+| JA4 hash | Preset |
 |---|---|
-| `t13d1516h2_8daaf6152771_b0da82dd1658` | Chrome 120 |
-| `t13d1516h2_8daaf6152771_e5627efa2ab1` | Chrome 120 (post-quantum) |
-| `t13d1517h2_8daaf6152771_b1ff8ab2d16f` | Firefox 120 |
-| `t13d1516h2_8daaf6152771_4aeede8da0ac` | Safari 16.0 |
-| `t13d1516h2_8daaf6152771_f5b4b24de8b1` | Edge 106 |
+| `t13d1516h2_8daaf6152771_02713d6af862` | Chrome 120 (`HelloChrome_120`) |
+| `t13d1715h2_5b57614c22b0_5c2c66f702b0` | Firefox 120 (`HelloFirefox_120`) |
+| `t13d2014h2_a09f3c656075_14788d8d241b` | Safari 16.0 (`HelloSafari_16_0`) |
+| `t13d1516h2_8daaf6152771_e5627efa2ab1` | Edge 106 (`HelloEdge_106`) |
+
+> `HelloChrome_120_PQ` (post-quantum) produces the same JA4 as Chrome 120 because
+> the X25519MLKEM768 key share is not distinguished by JA4. It is not separately
+> selectable via config hash.
 
 ---
 
@@ -115,11 +133,28 @@ cert = ""   # optional: custom CA for upstream verification
 
 ### client-front
 
-Configure your client to use an HTTP CONNECT proxy at the listen address:
+Set `mode = "client-front"` and configure `[ca.intercept]` with paths for the local
+CA cert and key. mic will create them on first run.
+
+**Trust the CA once** (pick whichever applies):
 
 ```bash
-curl -x http://localhost:8080 https://tls.peet.ws/api/all
-# check the "ja4" field in the response
+# curl — pass --cacert on every invocation, or set CURL_CA_BUNDLE
+curl --cacert ca.pem -x http://localhost:8080 https://tlsinfo.me/json
+
+# Debian / Ubuntu / Kali — add to system store
+sudo cp ca.pem /usr/local/share/ca-certificates/mic-ca.crt
+sudo update-ca-certificates
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem
+```
+
+After trusting the CA, standard tools work without extra flags:
+
+```bash
+curl -x http://localhost:8080 https://tlsinfo.me/json
+# check the "ja4" field — it should match your configured fingerprint
 ```
 
 ### server-front

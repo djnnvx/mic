@@ -24,7 +24,13 @@ type Backend struct {
 }
 
 type CAConf struct {
-	Cert string `toml:"cert"`
+	Cert      string          `toml:"cert"`      // upstream CA cert for verifying targets
+	Intercept InterceptCAConf `toml:"intercept"` // client-front: local MitM CA
+}
+
+type InterceptCAConf struct {
+	Cert string `toml:"cert"` // path to local CA cert (created if absent)
+	Key  string `toml:"key"`  // path to local CA key  (created if absent)
 }
 
 type FpConf struct {
