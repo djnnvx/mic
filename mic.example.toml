@@ -1,0 +1,26 @@
+mode = "client-front"   # "client-front" | "server-front"
+
+[listen]
+addr = ":8080"
+
+[backend]
+# Used in server-front mode; client-front uses the CONNECT target directly.
+addr = "127.0.0.1:443"
+
+[fingerprint]
+[fingerprint.tls]
+ja4 = "t13d1516h2_8daaf6152771_b0da82dd1658"   # Chrome 120
+
+# server-front only: certificate for terminating incoming TLS
+[fingerprint.tls.termination]
+cert = "/path/to/cert.pem"
+key  = "/path/to/key.pem"
+
+[ca]
+cert = ""   # optional custom CA for upstream verification
+
+# Future:
+# [fingerprint.tcp]
+# window_size = 65535
+# ttl = 64
+# mss = 1460

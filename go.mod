@@ -3,6 +3,7 @@ module github.com/djnnvx/mic
 go 1.24.4
 
 require (
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/refraction-networking/utls v1.8.0
 	github.com/spf13/cobra v1.9.1
 )

@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/djnnvx/mic/config"
+	"github.com/djnnvx/mic/fingerprint"
 	"github.com/djnnvx/mic/proxy"
 	"github.com/spf13/cobra"
 )
@@ -50,35 +52,61 @@ func getParser(opts *MicCliOptions) *cobra.Command {
 		Short: "modular proxy for network-fingerprinting evasion",
 		Long:  "mic (mina-is-cute) is a HTTPS proxy to evade networking fingerprinting detection",
 		Run: func(cmd *cobra.Command, args []string) {
+			cfg, err := config.Load(opts.ConfigPath)
+			if err != nil {
+				log.Fatalf("[!] Failed to load config: %v", err)
+			}
 
-			log.Printf("[+] only HTTPS supported for now, registering default handler.")
 			p := &proxy.Proxy{
-				ListenAddr: opts.Addr,
-				ForwardTo:  opts.ForwardTo,
+				ListenAddr:  cfg.Listen.Addr,
+				BackendAddr: cfg.Backend.Addr,
 			}
 
-			if opts.CAPath != "" {
-				caCert, err := os.ReadFile(opts.CAPath)
+			// Load optional custom CA pool.
+			if cfg.CA.Cert != "" {
+				caCert, err := os.ReadFile(cfg.CA.Cert)
 				if err != nil {
-					log.Fatalf("Failed to read server certificate: %v", err)
+					log.Fatalf("[!] Failed to read CA certificate: %v", err)
 				}
-
-				caCertPool := x509.NewCertPool()
-				caCertPool.AppendCertsFromPEM(caCert)
-				p.AddCertificate(caCertPool)
+				pool := x509.NewCertPool()
+				pool.AppendCertsFromPEM(caCert)
+				p.CAPool = pool
 			}
 
-			p.RegisterHandler(proxy.HttpsHandler)
-			p.Run()
+			// Load TLS fingerprint if a JA4 hash is configured.
+			if cfg.Fingerprint.TLS.JA4 != "" {
+				fp, err := fingerprint.NewTLS(cfg.Fingerprint.TLS.JA4)
+				if err != nil {
+					log.Fatalf("[!] Failed to load fingerprint: %v", err)
+				}
+				p.Fingerprint = fp
+				log.Printf("[+] Using TLS fingerprint: %s", fp.Name())
+			}
+
+			switch cfg.Mode {
+			case "client-front":
+				log.Printf("[+] Mode: client-front (HTTP CONNECT proxy)")
+				p.RegisterHandler(proxy.HttpsHandler)
+			case "server-front":
+				log.Printf("[+] Mode: server-front (TLS termination → backend %s)", cfg.Backend.Addr)
+				certFile := cfg.Fingerprint.TLS.Termination.Cert
+				keyFile := cfg.Fingerprint.TLS.Termination.Key
+				if certFile == "" || keyFile == "" {
+					log.Fatalf("[!] server-front mode requires fingerprint.tls.termination.cert and .key")
+				}
+				p.RegisterHandler(proxy.ServerFrontHandler(certFile, keyFile))
+			default:
+				log.Fatalf("[!] Unknown mode %q; expected \"client-front\" or \"server-front\"", cfg.Mode)
+			}
+
+			if err := p.Run(); err != nil {
+				log.Fatalf("[!] Proxy error: %v", err)
+			}
 		},
 	}
 
 	defaults := GetDefaultOptions()
-
-	rootCmd.Flags().StringVarP(&opts.Addr, "addr", "a", defaults.Addr, "address to listen to (Golang notation)")
-	rootCmd.Flags().IntVarP(&opts.ForwardTo, "forward-to", "t", defaults.ForwardTo, "local port to forward to")
-	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", defaults.Verbose, "enable verbose mode")
-	rootCmd.Flags().StringVarP(&opts.CAPath, "ca-cert-path", "c", defaults.CAPath, "custom CA certificate path (optional)")
+	rootCmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", defaults.ConfigPath, "path to TOML config file")
 
 	return rootCmd
 }
