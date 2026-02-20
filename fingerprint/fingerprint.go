@@ -14,11 +14,3 @@ type TLSApplier interface {
 	Applier
 	ClientHelloID() utls.ClientHelloID
 }
-
-// TCPApplier will control TCP socket options (window size, TTL, MSS, etc.).
-// Left for a future implementation.
-//
-// type TCPApplier interface {
-//     Applier
-//     Apply(fd uintptr) error
-// }

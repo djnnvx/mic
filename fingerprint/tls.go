@@ -6,10 +6,16 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
+// NameTable maps human-readable profile names to utls ClientHelloID presets.
+var NameTable = map[string]utls.ClientHelloID{
+	"chrome-120":    utls.HelloChrome_120,
+	"chrome-120-pq": utls.HelloChrome_120_PQ,
+	"firefox-120":   utls.HelloFirefox_120,
+	"safari-16":     utls.HelloSafari_16_0,
+	"edge-106":      utls.HelloEdge_106,
+}
+
 // Table maps known JA4-TLS fingerprint hashes to utls ClientHelloID presets.
-// JA4 hashes are computed from real traffic captures; verify against current
-// browser versions when adding new entries.
-// Table maps JA4-TLS hashes to utls ClientHelloID presets.
 //
 // Hashes are measured empirically against tlsinfo.me using cmd/probe — they
 // reflect what the utls preset actually emits, not captures from real browsers.
@@ -32,25 +38,25 @@ func Lookup(ja4 string) (utls.ClientHelloID, bool) {
 	return id, ok
 }
 
-// TLSFingerprint implements TLSApplier for a specific JA4 hash.
+// TLSFingerprint implements TLSApplier for a specific named profile.
 type TLSFingerprint struct {
-	ja4 string
-	id  utls.ClientHelloID
+	name string
+	id   utls.ClientHelloID
 }
 
-// NewTLS creates a TLSFingerprint for the given JA4 hash.
-// Returns an error if the hash is not in the built-in table.
-func NewTLS(ja4 string) (*TLSFingerprint, error) {
-	id, ok := Lookup(ja4)
+// ByName creates a TLSFingerprint for the given profile name.
+// Returns an error if the name is not in NameTable.
+func ByName(name string) (*TLSFingerprint, error) {
+	id, ok := NameTable[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown JA4-TLS fingerprint %q", ja4)
+		return nil, fmt.Errorf("unknown TLS fingerprint profile %q", name)
 	}
-	return &TLSFingerprint{ja4: ja4, id: id}, nil
+	return &TLSFingerprint{name: name, id: id}, nil
 }
 
-// Name returns a human-readable identifier including the JA4 hash.
+// Name returns the profile name.
 func (f *TLSFingerprint) Name() string {
-	return "tls:" + f.ja4
+	return f.name
 }
 
 // ClientHelloID returns the utls preset for this fingerprint.

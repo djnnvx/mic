@@ -19,10 +19,7 @@ import (
 	"github.com/djnnvx/mic/fingerprint"
 )
 
-const (
-	chrome120JA4 = "t13d1516h2_8daaf6152771_b0da82dd1658"
-	testTimeout  = 10 * time.Second
-)
+const testTimeout = 10 * time.Second
 
 // serveHandler starts a TCP listener and dispatches accepted connections to h.
 // The listener is closed when the test ends.
@@ -100,9 +97,9 @@ func TestClientFront_Integration(t *testing.T) {
 	// Trust the test server's certificate.
 	caPool := ts.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 
-	fp, err := fingerprint.NewTLS(chrome120JA4)
+	fp, err := fingerprint.ByName("chrome-120")
 	if err != nil {
-		t.Fatalf("fingerprint.NewTLS: %v", err)
+		t.Fatalf("fingerprint.ByName: %v", err)
 	}
 
 	p := &Proxy{CAPool: caPool, Fingerprint: fp}
@@ -163,9 +160,9 @@ func TestServerFront_Integration(t *testing.T) {
 	// Generate a cert/key pair the proxy will use to terminate incoming client TLS.
 	certFile, keyFile, proxyCertPool := writeTempCertKey(t)
 
-	fp, err := fingerprint.NewTLS(chrome120JA4)
+	fp, err := fingerprint.ByName("chrome-120")
 	if err != nil {
-		t.Fatalf("fingerprint.NewTLS: %v", err)
+		t.Fatalf("fingerprint.ByName: %v", err)
 	}
 
 	p := &Proxy{
