@@ -14,8 +14,7 @@ import (
 	"github.com/djnnvx/mic/fingerprint"
 )
 
-// expectedJA4 maps fingerprint profile names to their known JA4 strings.
-// Values come from fingerprint.Table (measured empirically via cmd/probe against
+// Values measured empirically via cmd/probe against
 // tlsinfo.me). chrome-120-pq is absent: it emits the same JA4 as chrome-120
 // because JA4 does not distinguish the X25519MLKEM768 key share.
 var expectedJA4 = map[string]string{

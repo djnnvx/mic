@@ -225,7 +225,6 @@ func parseSigAlgs(data []byte, f *ClientHelloFields) {
 	}
 }
 
-// ComputeJA4 returns the JA4 fingerprint string for ch.
 func ComputeJA4(ch *ClientHelloFields) string {
 	return buildJA4a(ch) + "_" + buildJA4b(ch.CipherSuites) + "_" + buildJA4c(ch.Extensions, ch.SigAlgs)
 }

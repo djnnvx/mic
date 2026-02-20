@@ -21,8 +21,6 @@ import (
 
 const testTimeout = 10 * time.Second
 
-// serveHandler starts a TCP listener and dispatches accepted connections to h.
-// The listener is closed when the test ends.
 func serveHandler(t *testing.T, p *Proxy, h Handler) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -44,15 +42,11 @@ func serveHandler(t *testing.T, p *Proxy, h Handler) string {
 	return ln.Addr().String()
 }
 
-// writeTempCertKey generates a self-signed cert/key, writes PEM files to disk,
-// and returns the file paths plus a CA pool that trusts the cert.
-// Files are removed when the test ends.
 func writeTempCertKey(t *testing.T) (certFile, keyFile string, pool *x509.CertPool) {
 	t.Helper()
 
 	pool, tlsCert := generateSelfSignedCert(t)
 
-	// Certificate PEM.
 	cf, err := os.CreateTemp("", "mic-cert-*.pem")
 	if err != nil {
 		t.Fatalf("creating cert temp file: %v", err)
@@ -61,7 +55,7 @@ func writeTempCertKey(t *testing.T) (certFile, keyFile string, pool *x509.CertPo
 	cf.Close()
 	certFile = cf.Name()
 
-	// Private key PEM (PKCS8 — accepted by tls.LoadX509KeyPair as "PRIVATE KEY").
+	// PKCS8 format is required: tls.LoadX509KeyPair accepts "PRIVATE KEY" blocks.
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(tlsCert.PrivateKey)
 	if err != nil {
 		t.Fatalf("marshaling private key: %v", err)
@@ -86,7 +80,6 @@ func writeTempCertKey(t *testing.T) (certFile, keyFile string, pool *x509.CertPo
 //
 //	client → TCP CONNECT → proxy → uTLS(Chrome120) → httptest.TLSServer
 func TestClientFront_Integration(t *testing.T) {
-	// Start a target HTTPS server.
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusOK)
@@ -94,7 +87,6 @@ func TestClientFront_Integration(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Trust the test server's certificate.
 	caPool := ts.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 
 	fp, err := fingerprint.ByName("chrome-120")
@@ -105,7 +97,6 @@ func TestClientFront_Integration(t *testing.T) {
 	p := &Proxy{CAPool: caPool, Fingerprint: fp}
 	proxyAddr := serveHandler(t, p, HttpsHandler)
 
-	// Connect to the proxy over plain TCP.
 	conn, err := net.DialTimeout("tcp", proxyAddr, testTimeout)
 	if err != nil {
 		t.Fatalf("dial proxy: %v", err)
@@ -113,7 +104,6 @@ func TestClientFront_Integration(t *testing.T) {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(testTimeout))
 
-	// Send HTTP CONNECT to open a tunnel to the target.
 	targetAddr := ts.Listener.Addr().String()
 	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", targetAddr, targetAddr)
 
@@ -126,8 +116,8 @@ func TestClientFront_Integration(t *testing.T) {
 		t.Fatalf("CONNECT status: %d; want 200", resp.StatusCode)
 	}
 
-	// After CONNECT the proxy has already done uTLS to the target.
-	// We send raw HTTP — the proxy wraps it in TLS on our behalf.
+	// The proxy has already done uTLS to the target; raw bytes we send here are
+	// wrapped in that TLS connection on our behalf.
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", targetAddr)
 
 	resp, err = http.ReadResponse(reader, nil)
@@ -147,7 +137,6 @@ func TestClientFront_Integration(t *testing.T) {
 //
 //	client → TLS → proxy (terminates TLS) → uTLS(Chrome120) → httptest.TLSServer
 func TestServerFront_Integration(t *testing.T) {
-	// Start the backend HTTPS server (what the proxy connects to upstream).
 	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusOK)
@@ -156,8 +145,6 @@ func TestServerFront_Integration(t *testing.T) {
 	defer backend.Close()
 
 	backendCAPool := backend.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
-
-	// Generate a cert/key pair the proxy will use to terminate incoming client TLS.
 	certFile, keyFile, proxyCertPool := writeTempCertKey(t)
 
 	fp, err := fingerprint.ByName("chrome-120")
@@ -172,7 +159,6 @@ func TestServerFront_Integration(t *testing.T) {
 	}
 	proxyAddr := serveHandler(t, p, ServerFrontHandler(certFile, keyFile))
 
-	// Connect to the proxy with TLS, trusting the proxy's generated cert.
 	tlsConn, err := tls.DialWithDialer(
 		&net.Dialer{Timeout: testTimeout},
 		"tcp", proxyAddr,
@@ -184,8 +170,8 @@ func TestServerFront_Integration(t *testing.T) {
 	defer tlsConn.Close()
 	tlsConn.SetDeadline(time.Now().Add(testTimeout))
 
-	// Send plain HTTP — the proxy decrypts from us and re-encrypts with the
-	// configured fingerprint before forwarding to the backend.
+	// The proxy decrypts our TLS and re-encrypts with the configured fingerprint
+	// before forwarding to the backend.
 	fmt.Fprintf(tlsConn, "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
 
 	reader := bufio.NewReader(tlsConn)

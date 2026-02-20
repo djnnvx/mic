@@ -32,20 +32,16 @@ var Table = map[string]utls.ClientHelloID{
 	"t13d1516h2_8daaf6152771_e5627efa2ab1": utls.HelloEdge_106,
 }
 
-// Lookup returns the utls.ClientHelloID for the given JA4 hash.
 func Lookup(ja4 string) (utls.ClientHelloID, bool) {
 	id, ok := Table[ja4]
 	return id, ok
 }
 
-// TLSFingerprint implements TLSApplier for a specific named profile.
 type TLSFingerprint struct {
 	name string
 	id   utls.ClientHelloID
 }
 
-// ByName creates a TLSFingerprint for the given profile name.
-// Returns an error if the name is not in NameTable.
 func ByName(name string) (*TLSFingerprint, error) {
 	id, ok := NameTable[name]
 	if !ok {
@@ -54,12 +50,10 @@ func ByName(name string) (*TLSFingerprint, error) {
 	return &TLSFingerprint{name: name, id: id}, nil
 }
 
-// Name returns the profile name.
 func (f *TLSFingerprint) Name() string {
 	return f.name
 }
 
-// ClientHelloID returns the utls preset for this fingerprint.
 func (f *TLSFingerprint) ClientHelloID() utls.ClientHelloID {
 	return f.id
 }

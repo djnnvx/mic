@@ -21,13 +21,12 @@ import (
 type LocalCA struct {
 	cert    *x509.Certificate
 	key     *ecdsa.PrivateKey
-	derCert []byte // raw DER of CA cert, appended as chain in issued certs
+	derCert []byte // raw DER, appended as chain in issued certs
 
 	mu    sync.Mutex
 	cache map[string]tls.Certificate
 }
 
-// GenerateCA creates a fresh in-memory self-signed CA.
 func GenerateCA() (*LocalCA, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -37,8 +36,8 @@ func GenerateCA() (*LocalCA, error) {
 }
 
 // LoadOrGenerateCA loads the CA from certPath + keyPath. If the files do not
-// exist, it generates a new CA and writes it to those paths. Pass empty strings
-// to get an ephemeral in-memory CA.
+// exist it generates a new CA and writes it to those paths. Pass empty strings
+// for an ephemeral in-memory CA.
 func LoadOrGenerateCA(certPath, keyPath string) (*LocalCA, error) {
 	if certPath == "" || keyPath == "" {
 		return GenerateCA()
@@ -52,7 +51,6 @@ func LoadOrGenerateCA(certPath, keyPath string) (*LocalCA, error) {
 		return nil, fmt.Errorf("loading CA: %w", err)
 	}
 
-	// Files don't exist — generate a new CA and persist it.
 	ca, err = GenerateCA()
 	if err != nil {
 		return nil, err
@@ -114,7 +112,6 @@ func buildCA(key *ecdsa.PrivateKey) (*LocalCA, error) {
 	}, nil
 }
 
-// Save writes the CA certificate and private key to PEM files.
 func (ca *LocalCA) Save(certPath, keyPath string) error {
 	cf, err := os.Create(certPath)
 	if err != nil {
@@ -137,13 +134,14 @@ func (ca *LocalCA) Save(certPath, keyPath string) error {
 	return pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 }
 
-// CertPEM returns the CA certificate as a PEM block, ready to be imported
-// into a trust store (e.g. curl --cacert, system store).
+// CertPEM returns the CA certificate as PEM, suitable for curl --cacert or
+// importing into a system trust store.
 func (ca *LocalCA) CertPEM() []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.derCert})
 }
 
-// issueCert generates (and caches) a leaf certificate for host, signed by the CA.
+// issueCert returns a leaf certificate for host signed by the CA, issuing and
+// caching a new one on first call.
 func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
@@ -179,8 +177,7 @@ func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 		return tls.Certificate{}, err
 	}
 	cert := tls.Certificate{
-		// Include the CA cert so clients that load the CA can verify the chain.
-		Certificate: [][]byte{der, ca.derCert},
+		Certificate: [][]byte{der, ca.derCert}, // CA appended so clients can verify the chain
 		PrivateKey:  key,
 	}
 	ca.cache[host] = cert
