@@ -30,7 +30,6 @@ func ServerFrontHandler(certFile, keyFile string) Handler {
 		}
 		defer tlsConn.Close()
 
-		// Dial the backend with the configured uTLS fingerprint.
 		targetConn, err := p.dialTarget(p.BackendAddr)
 		if err != nil {
 			log.Printf("ServerFront: failed to connect to backend %s: %v", p.BackendAddr, err)

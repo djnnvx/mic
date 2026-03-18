@@ -22,17 +22,14 @@ type Proxy struct {
 	handlers []Handler
 }
 
-// Handler is a function that processes an incoming client connection.
 type Handler func(conn net.Conn, p *Proxy)
 
-// RegisterHandler adds a handler to the proxy.
 func (p *Proxy) RegisterHandler(h Handler) {
 	p.handlers = append(p.handlers, h)
 }
 
-// dialTarget dials host (host:port), performs a uTLS handshake using p.Fingerprint,
-// and returns the ready-to-use connection. Falls back to HelloRandomized if no
-// fingerprint is configured.
+// dialTarget dials host (host:port) and returns a uTLS connection after a
+// successful handshake. Falls back to HelloRandomized when no fingerprint is set.
 func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 	tcpConn, err := net.Dial("tcp", host)
 	if err != nil {
@@ -49,9 +46,7 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 		serverName = host[:idx]
 	}
 
-	cfg := &utls.Config{
-		ServerName: serverName,
-	}
+	cfg := &utls.Config{ServerName: serverName}
 	if p.CAPool != nil {
 		cfg.RootCAs = p.CAPool
 	}
@@ -64,9 +59,8 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 	return uconn, nil
 }
 
-// pipe copies data bidirectionally between client (reading from r) and target,
-// blocking until both directions are done. When either direction finishes it
-// closes that side's connection so the other goroutine unblocks and exits.
+// pipe copies bidirectionally between client (reading from r) and target.
+// When either direction finishes it closes that side so the other goroutine unblocks.
 func pipe(client io.ReadWriteCloser, r io.Reader, target io.ReadWriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -86,7 +80,6 @@ func pipe(client io.ReadWriteCloser, r io.Reader, target io.ReadWriteCloser) {
 	wg.Wait()
 }
 
-// Run starts the proxy server and dispatches incoming connections to registered handlers.
 func (p *Proxy) Run() error {
 	ln, err := net.Listen("tcp", p.ListenAddr)
 	if err != nil {

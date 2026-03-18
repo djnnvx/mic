@@ -4,7 +4,6 @@ go 1.24.4
 
 require (
 	github.com/bogdanfinn/utls v1.7.7-barnius
-	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/net v0.38.0
 )

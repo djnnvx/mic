@@ -16,7 +16,6 @@ import (
 	"github.com/djnnvx/mic/fingerprint"
 )
 
-// generateSelfSignedCert creates an in-memory self-signed cert/pool for testing.
 func generateSelfSignedCert(t *testing.T) (*x509.CertPool, tls.Certificate) {
 	t.Helper()
 
@@ -58,7 +57,6 @@ func generateSelfSignedCert(t *testing.T) (*x509.CertPool, tls.Certificate) {
 func TestDialTarget_HandshakeSucceeds(t *testing.T) {
 	pool, tlsCert := generateSelfSignedCert(t)
 
-	// Start an in-process TLS server on a random port.
 	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 	})
@@ -67,7 +65,6 @@ func TestDialTarget_HandshakeSucceeds(t *testing.T) {
 	}
 	defer ln.Close()
 
-	// Accept and drain one connection in the background.
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -77,9 +74,9 @@ func TestDialTarget_HandshakeSucceeds(t *testing.T) {
 		io.Copy(io.Discard, conn)
 	}()
 
-	fp, err := fingerprint.NewTLS("t13d1516h2_8daaf6152771_02713d6af862")
+	fp, err := fingerprint.ByName("chrome-120")
 	if err != nil {
-		t.Fatalf("fingerprint.NewTLS: %v", err)
+		t.Fatalf("fingerprint.ByName: %v", err)
 	}
 
 	p := &Proxy{
@@ -94,7 +91,6 @@ func TestDialTarget_HandshakeSucceeds(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Verify connection is usable for writes.
 	if _, err := conn.Write([]byte("hello\n")); err != nil {
 		t.Fatalf("writing to connection: %v", err)
 	}
@@ -120,7 +116,6 @@ func TestDialTarget_FallbackToRandomized(t *testing.T) {
 		io.Copy(io.Discard, conn)
 	}()
 
-	// No fingerprint set — should fall back to HelloRandomized.
 	p := &Proxy{
 		ListenAddr: "127.0.0.1:0",
 		CAPool:     pool,
@@ -128,8 +123,7 @@ func TestDialTarget_FallbackToRandomized(t *testing.T) {
 
 	conn, err := p.dialTarget(ln.Addr().String())
 	if err != nil {
-		// HelloRandomized may select post-quantum curves not supported by stdlib TLS servers.
-		// Skip rather than fail — the code path is exercised regardless.
+		// HelloRandomized may select post-quantum curves unsupported by stdlib TLS.
 		t.Skipf("dialTarget with randomized preset: %v", err)
 	}
 	conn.Close()

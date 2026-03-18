@@ -1,13 +1,13 @@
 # mic
 
 mic (mina-is-cute) is a modular Go proxy for controlling outbound TLS fingerprints.
-It lets you specify a JA4-TLS hash and the proxy will use the corresponding `uTLS`
-preset when connecting to upstream servers, making your traffic look like a specific
-browser to any fingerprinting system.
+It lets you pick a browser fingerprint profile and the proxy will use the corresponding
+`uTLS` preset when connecting to upstream servers, making your traffic look like a
+specific browser to any fingerprinting system.
 
 Two modes are supported:
 
-- **client-front** — HTTP CONNECT proxy with MitM TLS interception. The proxy
+- **client-front** — HTTP CONNECT proxy with optional MitM TLS interception. The proxy
   generates a local CA, issues per-host leaf certs on the fly, terminates TLS from
   the client, and re-dials the target with the configured uTLS fingerprint. Standard
   tools (curl, browsers) work after importing the CA once.
@@ -50,7 +50,7 @@ sequenceDiagram
     end
 ```
 
-In both modes the target sees a TLS handshake that matches the configured JA4 hash,
+In both modes the target sees a TLS handshake that matches the configured fingerprint,
 not the default Go TLS fingerprint.
 
 ---
@@ -61,134 +61,93 @@ not the default Go TLS fingerprint.
 go build -o mic .
 ```
 
-Or with the helper script (builds, creates `mic.toml`, starts the proxy, and prints
-CA trust instructions):
-
-```bash
-scripts/setup.sh
-```
-
----
-
-## Configuration
-
-Copy the example config and edit it:
-
-```bash
-cp mic.example.toml mic.toml
-```
-
-```toml
-mode = "client-front"   # or "server-front"
-
-[listen]
-addr = ":8080"
-
-[backend]
-addr = "127.0.0.1:443"   # server-front only
-
-[fingerprint]
-[fingerprint.tls]
-ja4 = "t13d1516h2_8daaf6152771_b0da82dd1658"   # Chrome 120
-
-# server-front only: certificate mic presents to clients
-[fingerprint.tls.termination]
-cert = "/path/to/cert.pem"
-key  = "/path/to/key.pem"
-
-[ca]
-cert = ""   # optional: custom CA for verifying upstream targets
-
-# client-front only: local MitM CA.
-# mic creates these files on first run and reuses them across restarts.
-# Import ca.pem into curl / your browser / the system trust store.
-[ca.intercept]
-cert = "ca.pem"
-key  = "ca-key.pem"
-```
-
-### Available JA4 fingerprints
-
-Hashes are measured by `cmd/probe` against tlsinfo.me and reflect what each utls
-preset actually emits. Re-run the probe after upgrading the utls dependency.
-
-| JA4 hash | Preset |
-|---|---|
-| `t13d1516h2_8daaf6152771_02713d6af862` | Chrome 120 (`HelloChrome_120`) |
-| `t13d1715h2_5b57614c22b0_5c2c66f702b0` | Firefox 120 (`HelloFirefox_120`) |
-| `t13d2014h2_a09f3c656075_14788d8d241b` | Safari 16.0 (`HelloSafari_16_0`) |
-| `t13d1516h2_8daaf6152771_e5627efa2ab1` | Edge 106 (`HelloEdge_106`) |
-
-> `HelloChrome_120_PQ` (post-quantum) produces the same JA4 as Chrome 120 because
-> the X25519MLKEM768 key share is not distinguished by JA4. It is not separately
-> selectable via config hash.
-
 ---
 
 ## Running
 
-```bash
-./mic --config mic.toml
-```
-
 ### client-front
 
-Set `mode = "client-front"` and configure `[ca.intercept]` with paths for the local
-CA cert and key. mic will create them on first run.
+```bash
+mic client --listen :8080 --fingerprint chrome-120 \
+           --intercept-cert ca.pem --intercept-key ca-key.pem
+```
 
-**Trust the CA once** (pick whichever applies):
+`--intercept-cert` and `--intercept-key` enable MitM interception. mic generates the
+CA files on first run and reuses them. Import the cert once, then all traffic through
+the proxy is transparently intercepted and re-dialled with the configured fingerprint.
+
+**Trust the CA** (pick whichever applies):
 
 ```bash
-# curl — pass --cacert on every invocation, or set CURL_CA_BUNDLE
+# curl — pass on every call, or set CURL_CA_BUNDLE
 curl --cacert ca.pem -x http://localhost:8080 https://tlsinfo.me/json
 
-# Debian / Ubuntu / Kali — add to system store
-sudo cp ca.pem /usr/local/share/ca-certificates/mic-ca.crt
-sudo update-ca-certificates
+# Debian / Ubuntu / Kali
+sudo cp ca.pem /usr/local/share/ca-certificates/mic-ca.crt && sudo update-ca-certificates
 
 # macOS
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem
 ```
 
-After trusting the CA, standard tools work without extra flags:
+After trusting, standard tools work without extra flags:
 
 ```bash
 curl -x http://localhost:8080 https://tlsinfo.me/json
-# check the "ja4" field — it should match your configured fingerprint
+# check the "ja4" field — it should match the fingerprint you configured
 ```
+
+Omit `--intercept-*` to run as a plain CONNECT proxy (no MitM, raw tunnel only).
 
 ### server-front
 
-Generate a self-signed certificate for the proxy to present to clients:
+Generate a cert for the proxy to present to clients:
 
 ```bash
 go run $(go env GOROOT)/src/crypto/tls/generate_cert.go --host="localhost,127.0.0.1"
 # produces cert.pem and key.pem
 ```
 
-Set `mode = "server-front"`, point `fingerprint.tls.termination.cert/key` at those
-files, and set `backend.addr` to your upstream. Then connect directly to the proxy
-address with a TLS client.
-
-### Stop
-
 ```bash
-scripts/cleanup.sh
+mic server --listen :8080 --backend 10.0.0.1:443 \
+           --cert cert.pem --key key.pem \
+           --fingerprint chrome-120
 ```
+
+`--backend`, `--cert`, and `--key` are required. `--fingerprint` is optional; without
+it the proxy falls back to a randomised uTLS preset.
+
+### Available fingerprint profiles
+
+Hashes are measured by `cmd/probe` against tlsinfo.me and reflect what each utls
+preset actually emits. Re-run the probe after upgrading the utls dependency.
+
+| Profile | JA4 hash |
+|---|---|
+| `chrome-120` | `t13d1516h2_8daaf6152771_02713d6af862` |
+| `chrome-120-pq` | same as `chrome-120`¹ |
+| `firefox-120` | `t13d1715h2_5b57614c22b0_5c2c66f702b0` |
+| `safari-16` | `t13d2014h2_a09f3c656075_14788d8d241b` |
+| `edge-106` | `t13d1516h2_8daaf6152771_e5627efa2ab1` |
+
+> ¹ `chrome-120-pq` (post-quantum) produces the same JA4 because JA4 does not
+> distinguish the X25519MLKEM768 key share. Use it when you specifically need the PQ
+> key exchange behaviour regardless of fingerprint visibility.
 
 ---
 
 ## Testing
 
-Unit tests:
-
 ```bash
+# unit tests
 go test ./...
+
+# integration tests — spin up in-process TLS servers, no network required
+go test -tags integration -v ./proxy/... ./fingerprint/...
 ```
 
-Integration tests (spin up in-process TLS servers, no external dependencies):
+The integration suite includes JA4 fingerprint verification tests: for each profile,
+both `TestClientFront_JA4` and `TestServerFront_JA4` capture the raw ClientHello sent
+by the proxy's uTLS engine and assert the computed JA4 hash matches the expected value.
+This is the offline equivalent of running `cmd/probe` against tlsinfo.me.
 
-```bash
-scripts/run_integration_tests.sh
-# or: go test -tags integration -v ./proxy/...
-```
+CI runs both suites on every push via `.github/workflows/ci.yml`.
