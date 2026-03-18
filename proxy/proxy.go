@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	utls "github.com/bogdanfinn/utls"
 	"github.com/djnnvx/mic/fingerprint"
-	utls "github.com/refraction-networking/utls"
 )
 
 type Proxy struct {
@@ -56,7 +56,7 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 		cfg.RootCAs = p.CAPool
 	}
 
-	uconn := utls.UClient(tcpConn, cfg, helloID)
+	uconn := utls.UClient(tcpConn, cfg, helloID, false, false, false)
 	if err := uconn.Handshake(); err != nil {
 		uconn.Close()
 		return nil, err

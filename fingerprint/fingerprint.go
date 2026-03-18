@@ -2,7 +2,7 @@
 // outbound connection fingerprints (TLS ClientHello, TCP socket options, etc.).
 package fingerprint
 
-import utls "github.com/refraction-networking/utls"
+import utls "github.com/bogdanfinn/utls"
 
 // Applier is the base interface for all fingerprint types.
 type Applier interface {

@@ -77,7 +77,7 @@ func TestDialTarget_HandshakeSucceeds(t *testing.T) {
 		io.Copy(io.Discard, conn)
 	}()
 
-	fp, err := fingerprint.NewTLS("t13d1516h2_8daaf6152771_b0da82dd1658")
+	fp, err := fingerprint.NewTLS("t13d1516h2_8daaf6152771_02713d6af862")
 	if err != nil {
 		t.Fatalf("fingerprint.NewTLS: %v", err)
 	}

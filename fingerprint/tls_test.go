@@ -4,19 +4,19 @@ import (
 	"strings"
 	"testing"
 
+	utls "github.com/bogdanfinn/utls"
 	"github.com/djnnvx/mic/fingerprint"
-	utls "github.com/refraction-networking/utls"
 )
 
-const knownJA4 = "t13d1516h2_8daaf6152771_b0da82dd1658"
+const knownJA4 = "t13d1516h2_8daaf6152771_02713d6af862"
 
 func TestLookup_Known(t *testing.T) {
 	id, ok := fingerprint.Lookup(knownJA4)
 	if !ok {
 		t.Fatalf("Lookup(%q) returned false; expected true", knownJA4)
 	}
-	if id != utls.HelloChrome_120 {
-		t.Errorf("Lookup(%q) = %v; want HelloChrome_120", knownJA4, id)
+	if id.Str() != utls.HelloChrome_131.Str() {
+		t.Errorf("Lookup(%q) = %v; want HelloChrome_131", knownJA4, id)
 	}
 }
 

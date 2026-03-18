@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	utls "github.com/refraction-networking/utls"
+	utls "github.com/bogdanfinn/utls"
 )
 
 func main() {
@@ -42,7 +42,7 @@ func main() {
 	// 4. Create a uTLS client from the proxied connection.
 	// We'll use the Chrome 116 fingerprint for the client.
 	utlsConfig := &utls.Config{ServerName: strings.Split(targetAddr, ":")[0]}
-	uclient := utls.UClient(proxyConn, utlsConfig, utls.HelloRandomized)
+	uclient := utls.UClient(proxyConn, utlsConfig, utls.HelloRandomized, false, false, false)
 
 	// 5. Perform the TLS handshake and get the handshake state.
 	if err := uclient.Handshake(); err != nil {

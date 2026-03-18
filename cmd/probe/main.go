@@ -11,7 +11,7 @@ import (
 	"net"
 	"net/http"
 
-	utls "github.com/refraction-networking/utls"
+	utls "github.com/bogdanfinn/utls"
 	"golang.org/x/net/http2"
 )
 
@@ -19,11 +19,28 @@ var presets = []struct {
 	name string
 	id   utls.ClientHelloID
 }{
+	// Chrome
 	{"HelloChrome_120", utls.HelloChrome_120},
 	{"HelloChrome_120_PQ", utls.HelloChrome_120_PQ},
+	{"HelloChrome_131", utls.HelloChrome_131},
+	{"HelloChrome_133", utls.HelloChrome_133},
+	// Firefox
 	{"HelloFirefox_120", utls.HelloFirefox_120},
+	// Safari / iOS
+	{"HelloSafari_15_6_1", utls.HelloSafari_15_6_1},
 	{"HelloSafari_16_0", utls.HelloSafari_16_0},
+	{"HelloIOS_15_5", utls.HelloIOS_15_5},
+	{"HelloIOS_15_6", utls.HelloIOS_15_6},
+	{"HelloIOS_16_0", utls.HelloIOS_16_0},
+	// Edge
+	{"HelloEdge_85", utls.HelloEdge_85},
 	{"HelloEdge_106", utls.HelloEdge_106},
+	// Opera
+	{"HelloOpera_89", utls.HelloOpera_89},
+	{"HelloOpera_90", utls.HelloOpera_90},
+	{"HelloOpera_91", utls.HelloOpera_91},
+	// Android
+	{"HelloAndroid_11_OkHttp", utls.HelloAndroid_11_OkHttp},
 }
 
 func dialUTLS(ctx context.Context, id utls.ClientHelloID) (*utls.UConn, error) {
@@ -31,7 +48,7 @@ func dialUTLS(ctx context.Context, id utls.ClientHelloID) (*utls.UConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	uconn := utls.UClient(tcpConn, &utls.Config{ServerName: "tlsinfo.me"}, id)
+	uconn := utls.UClient(tcpConn, &utls.Config{ServerName: "tlsinfo.me"}, id, false, false, false)
 	if err := uconn.Handshake(); err != nil {
 		tcpConn.Close()
 		return nil, err
