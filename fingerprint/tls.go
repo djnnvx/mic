@@ -10,6 +10,8 @@ import (
 var NameTable = map[string]utls.ClientHelloID{
 	"chrome-120":    utls.HelloChrome_120,
 	"chrome-120-pq": utls.HelloChrome_120_PQ,
+	"chrome-131":    utls.HelloChrome_131,
+	"chrome-133":    utls.HelloChrome_133,
 	"firefox-120":   utls.HelloFirefox_120,
 	"safari-16":     utls.HelloSafari_16_0,
 	"edge-106":      utls.HelloEdge_106,

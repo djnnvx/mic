@@ -2,8 +2,8 @@
 
 mic (mina-is-cute) is a modular Go proxy for controlling outbound TLS fingerprints.
 It lets you pick a browser fingerprint profile and the proxy will use the corresponding
-`uTLS` preset when connecting to upstream servers, making your traffic look like a
-specific browser to any fingerprinting system.
+[`bogdanfinn/utls`](https://github.com/bogdanfinn/utls) preset when connecting to upstream
+servers, making your traffic look like a specific browser to any fingerprinting system.
 
 Two modes are supported:
 
@@ -125,13 +125,16 @@ preset actually emits. Re-run the probe after upgrading the utls dependency.
 |---|---|
 | `chrome-120` | `t13d1516h2_8daaf6152771_02713d6af862` |
 | `chrome-120-pq` | same as `chrome-120`¹ |
+| `chrome-131` | same as `chrome-120`¹ |
+| `chrome-133` | `t13d1516h2_8daaf6152771_d8a2da3f94cd` |
 | `firefox-120` | `t13d1715h2_5b57614c22b0_5c2c66f702b0` |
 | `safari-16` | `t13d2014h2_a09f3c656075_14788d8d241b` |
 | `edge-106` | `t13d1516h2_8daaf6152771_e5627efa2ab1` |
 
-> ¹ `chrome-120-pq` (post-quantum) produces the same JA4 because JA4 does not
-> distinguish the X25519MLKEM768 key share. Use it when you specifically need the PQ
-> key exchange behaviour regardless of fingerprint visibility.
+> ¹ `chrome-120-pq` and `chrome-131` produce the same JA4 as `chrome-120` because JA4
+> does not distinguish key share entries. Use `chrome-120-pq` when you specifically need
+> the X25519MLKEM768 post-quantum key exchange; use `chrome-131` for the most current
+> non-PQ Chrome preset under this hash.
 
 ---
 
