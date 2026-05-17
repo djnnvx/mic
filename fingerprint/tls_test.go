@@ -34,7 +34,14 @@ func TestName_ReturnsProfile(t *testing.T) {
 }
 
 func TestNameTable_HasExpectedProfiles(t *testing.T) {
-	expected := []string{"chrome-120", "chrome-120-pq", "firefox-120", "safari-16", "edge-106"}
+	expected := []string{
+		"chrome-120", "chrome-120-pq", "chrome-131", "chrome-133",
+		"firefox-120",
+		"safari-16", "ios-16",
+		"edge-85", "edge-106",
+		"opera-91",
+		"android-11-okhttp",
+	}
 	for _, name := range expected {
 		if _, ok := fingerprint.NameTable[name]; !ok {
 			t.Errorf("NameTable missing profile %q", name)

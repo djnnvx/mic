@@ -14,14 +14,19 @@ import (
 	"github.com/djnnvx/mic/fingerprint"
 )
 
-// Values measured empirically via cmd/probe against
-// tlsinfo.me). chrome-120-pq is absent: it emits the same JA4 as chrome-120
+// Values measured empirically via cmd/probe against tlsinfo.me.
+// chrome-120-pq and chrome-131 are absent: they emit the same JA4 as chrome-120
 // because JA4 does not distinguish the X25519MLKEM768 key share.
 var expectedJA4 = map[string]string{
-	"chrome-120":  "t13d1516h2_8daaf6152771_02713d6af862",
-	"firefox-120": "t13d1715h2_5b57614c22b0_5c2c66f702b0",
-	"safari-16":   "t13d2014h2_a09f3c656075_14788d8d241b",
-	"edge-106":    "t13d1516h2_8daaf6152771_e5627efa2ab1",
+	"chrome-120":        "t13d1516h2_8daaf6152771_02713d6af862",
+	"chrome-133":        "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+	"firefox-120":       "t13d1715h2_5b57614c22b0_5c2c66f702b0",
+	"safari-16":         "t13d2014h2_a09f3c656075_14788d8d241b",
+	"ios-16":            "t13d2014h2_a09f3c656075_14788d8d241b",
+	"edge-85":           "t13d1515h2_8daaf6152771_de4a06bb82e3",
+	"edge-106":          "t13d1516h2_8daaf6152771_e5627efa2ab1",
+	"opera-91":          "t13d1516h2_8daaf6152771_e5627efa2ab1",
+	"android-11-okhttp": "t12d120700_d34a8e72043a_036209cd1ead",
 }
 
 // TestClientFront_JA4 verifies that each fingerprint profile produces the

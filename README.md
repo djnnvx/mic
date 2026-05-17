@@ -129,12 +129,22 @@ preset actually emits. Re-run the probe after upgrading the utls dependency.
 | `chrome-133` | `t13d1516h2_8daaf6152771_d8a2da3f94cd` |
 | `firefox-120` | `t13d1715h2_5b57614c22b0_5c2c66f702b0` |
 | `safari-16` | `t13d2014h2_a09f3c656075_14788d8d241b` |
+| `ios-16` | same as `safari-16`² |
+| `edge-85` | `t13d1515h2_8daaf6152771_de4a06bb82e3` |
 | `edge-106` | `t13d1516h2_8daaf6152771_e5627efa2ab1` |
+| `opera-91` | same as `edge-106`³ |
+| `android-11-okhttp` | `t12d120700_d34a8e72043a_036209cd1ead` (TLS 1.2) |
 
 > ¹ `chrome-120-pq` and `chrome-131` produce the same JA4 as `chrome-120` because JA4
 > does not distinguish key share entries. Use `chrome-120-pq` when you specifically need
 > the X25519MLKEM768 post-quantum key exchange; use `chrome-131` for the most current
 > non-PQ Chrome preset under this hash.
+>
+> ² `ios-16` collides with `safari-16` under JA4 (both ship the same TLS stack).
+> Pick whichever matches the user-agent you intend to imitate.
+>
+> ³ `opera-91` collides with `edge-106` (both are Chromium derivatives with matching
+> ClientHello shape). Same logic as above.
 
 ---
 
