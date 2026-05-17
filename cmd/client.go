@@ -55,7 +55,7 @@ func newClientCmd() *cobra.Command {
 			}
 
 			log.Printf("[+] Mode: client (HTTP CONNECT proxy on %s)", listen)
-			p.RegisterHandler(proxy.HttpsHandler)
+			p.Handler = proxy.HttpsHandler
 			return p.Run()
 		},
 	}

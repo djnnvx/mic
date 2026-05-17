@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"crypto/x509"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -18,15 +19,10 @@ type Proxy struct {
 	CAPool      *x509.CertPool
 	Fingerprint fingerprint.TLSApplier
 	LocalCA     *LocalCA // client-front: MitM CA for TLS interception
-
-	handlers []Handler
+	Handler     Handler
 }
 
 type Handler func(conn net.Conn, p *Proxy)
-
-func (p *Proxy) RegisterHandler(h Handler) {
-	p.handlers = append(p.handlers, h)
-}
 
 // dialTarget dials host (host:port) and returns a uTLS connection after a
 // successful handshake. Falls back to HelloRandomized when no fingerprint is set.
@@ -81,6 +77,9 @@ func pipe(client io.ReadWriteCloser, r io.Reader, target io.ReadWriteCloser) {
 }
 
 func (p *Proxy) Run() error {
+	if p.Handler == nil {
+		return fmt.Errorf("proxy: Handler is required")
+	}
 	ln, err := net.Listen("tcp", p.ListenAddr)
 	if err != nil {
 		return err
@@ -89,17 +88,11 @@ func (p *Proxy) Run() error {
 
 	log.Printf("[+] Starting proxy on %s", p.ListenAddr)
 	for {
-		c, err := ln.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			log.Printf("Failed to accept connection: %v", err)
 			continue
 		}
-
-		conn := c
-		go func() {
-			for _, h := range p.handlers {
-				h(conn, p)
-			}
-		}()
+		go p.Handler(conn, p)
 	}
 }

@@ -56,7 +56,7 @@ func newServerCmd() *cobra.Command {
 			}
 
 			log.Printf("[+] Mode: server (TLS termination → backend %s)", backend)
-			p.RegisterHandler(proxy.ServerFrontHandler(cert, key))
+			p.Handler = proxy.ServerFrontHandler(cert, key)
 			return p.Run()
 		},
 	}
