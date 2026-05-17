@@ -77,9 +77,9 @@ func HttpsHandler(clientConn net.Conn, p *Proxy) {
 		defer tlsClient.Close()
 
 		log.Printf("MitM tunnel established for %s (proto: %s)", serverName, tlsClient.ConnectionState().NegotiatedProtocol)
-		pipe(tlsClient, tlsClient, targetConn)
+		pipe(tlsClient, targetConn)
 		return
 	}
 
-	pipe(clientConn, reader, targetConn)
+	pipe(&bufferedConn{r: reader, Conn: clientConn}, targetConn)
 }

@@ -5,7 +5,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -74,19 +73,16 @@ func probe(id utls.ClientHelloID) (string, error) {
 	}
 	defer uconn.Close()
 
-	proto := uconn.ConnectionState().NegotiatedProtocol
-
-	if proto == "h2" {
-		// Use http2.Transport with the already-dialed connection.
-		h2t := &http2.Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-				return dialUTLS(ctx, id)
-			},
+	if uconn.ConnectionState().NegotiatedProtocol == "h2" {
+		// Reuse the already-established uconn rather than letting the Transport
+		// dial again — the first handshake is the one that produced the JA4 we
+		// want to measure.
+		cc, err := (&http2.Transport{}).NewClientConn(uconn)
+		if err != nil {
+			return "", err
 		}
-		// Discard the first connection — the Transport dials its own.
-		uconn.Close()
-		client := &http.Client{Transport: h2t}
-		resp, err := client.Get("https://tlsinfo.me/json")
+		req, _ := http.NewRequest("GET", "https://tlsinfo.me/json", nil)
+		resp, err := cc.RoundTrip(req)
 		if err != nil {
 			return "", err
 		}
@@ -94,7 +90,6 @@ func probe(id utls.ClientHelloID) (string, error) {
 		return decodeJA4(resp.Body)
 	}
 
-	// http/1.1 path: reuse the already-established connection.
 	req, _ := http.NewRequest("GET", "/json", nil)
 	req.Host = "tlsinfo.me"
 	req.Header.Set("Connection", "close")

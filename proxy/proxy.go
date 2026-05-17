@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -55,22 +56,32 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 	return uconn, nil
 }
 
-// pipe copies bidirectionally between client (reading from r) and target.
-// When either direction finishes it closes that side so the other goroutine unblocks.
-func pipe(client io.ReadWriteCloser, r io.Reader, target io.ReadWriteCloser) {
+// bufferedConn pairs a net.Conn with a bufio.Reader that may already contain
+// data read ahead from the underlying conn (e.g. after http.ReadRequest).
+// Reads come from the buffer; writes and Close go to the conn.
+type bufferedConn struct {
+	r *bufio.Reader
+	net.Conn
+}
+
+func (b *bufferedConn) Read(p []byte) (int, error) { return b.r.Read(p) }
+
+// pipe copies bidirectionally between a and b. When either direction finishes
+// it closes that side so the other goroutine unblocks.
+func pipe(a, b io.ReadWriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-		io.Copy(target, r)
-		target.Close()
+		io.Copy(b, a)
+		b.Close()
 	}()
 
 	go func() {
 		defer wg.Done()
-		io.Copy(client, target)
-		client.Close()
+		io.Copy(a, b)
+		a.Close()
 	}()
 
 	wg.Wait()

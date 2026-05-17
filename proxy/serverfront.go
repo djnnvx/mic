@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bufio"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -38,6 +37,6 @@ func ServerFrontHandler(certFile, keyFile string) (Handler, error) {
 		}
 		defer targetConn.Close()
 
-		pipe(tlsConn, bufio.NewReader(tlsConn), targetConn)
+		pipe(tlsConn, targetConn)
 	}, nil
 }
