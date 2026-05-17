@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"crypto/x509"
+	"fmt"
 	"log"
 	"os"
 
@@ -28,7 +29,7 @@ func newClientCmd() *cobra.Command {
 			if caPath != "" {
 				caCert, err := os.ReadFile(caPath)
 				if err != nil {
-					log.Fatalf("[!] Failed to read CA certificate: %v", err)
+					return fmt.Errorf("reading CA certificate: %w", err)
 				}
 				pool := x509.NewCertPool()
 				pool.AppendCertsFromPEM(caCert)
@@ -38,7 +39,7 @@ func newClientCmd() *cobra.Command {
 			if fpName != "" {
 				fp, err := fingerprint.ByName(fpName)
 				if err != nil {
-					log.Fatalf("[!] Failed to load fingerprint: %v", err)
+					return fmt.Errorf("loading fingerprint: %w", err)
 				}
 				p.Fingerprint = fp
 				log.Printf("[+] Using TLS fingerprint: %s", fp.Name())
@@ -47,7 +48,7 @@ func newClientCmd() *cobra.Command {
 			if interceptCert != "" || interceptKey != "" {
 				ca, err := proxy.LoadOrGenerateCA(interceptCert, interceptKey)
 				if err != nil {
-					log.Fatalf("[!] Failed to load/generate intercept CA: %v", err)
+					return fmt.Errorf("loading/generating intercept CA: %w", err)
 				}
 				p.LocalCA = ca
 				log.Printf("[+] MitM CA ready — import %s, then: curl --cacert %s -x http://localhost%s https://<target>",

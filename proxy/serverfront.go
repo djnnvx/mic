@@ -3,16 +3,17 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"net"
 )
 
 // ServerFrontHandler returns a Handler that terminates incoming TLS using certFile/keyFile,
 // then forwards to p.BackendAddr using the configured fingerprint.
-func ServerFrontHandler(certFile, keyFile string) Handler {
+func ServerFrontHandler(certFile, keyFile string) (Handler, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		log.Fatalf("ServerFrontHandler: loading certificate: %v", err)
+		return nil, fmt.Errorf("ServerFrontHandler: loading certificate: %w", err)
 	}
 
 	tlsCfg := &tls.Config{
@@ -38,5 +39,5 @@ func ServerFrontHandler(certFile, keyFile string) Handler {
 		defer targetConn.Close()
 
 		pipe(tlsConn, bufio.NewReader(tlsConn), targetConn)
-	}
+	}, nil
 }

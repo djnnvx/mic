@@ -85,7 +85,11 @@ func TestServerFront_JA4(t *testing.T) {
 			}
 
 			p := &Proxy{BackendAddr: captureAddr, CAPool: capturePool, Fingerprint: fp}
-			proxyAddr := serveHandler(t, p, ServerFrontHandler(proxyCertFile, proxyKeyFile))
+			handler, err := ServerFrontHandler(proxyCertFile, proxyKeyFile)
+			if err != nil {
+				t.Fatalf("ServerFrontHandler: %v", err)
+			}
+			proxyAddr := serveHandler(t, p, handler)
 
 			tlsConn, err := tls.DialWithDialer(
 				&net.Dialer{Timeout: testTimeout},

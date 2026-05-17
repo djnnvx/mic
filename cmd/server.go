@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -25,10 +27,10 @@ func newServerCmd() *cobra.Command {
 		Short: "TLS termination proxy with upstream fingerprinting",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if backend == "" {
-				log.Fatal("[!] --backend is required for server mode")
+				return errors.New("--backend is required for server mode")
 			}
 			if cert == "" || key == "" {
-				log.Fatal("[!] --cert and --key are required for server mode")
+				return errors.New("--cert and --key are required for server mode")
 			}
 
 			p := &proxy.Proxy{
@@ -39,7 +41,7 @@ func newServerCmd() *cobra.Command {
 			if caPath != "" {
 				caCert, err := os.ReadFile(caPath)
 				if err != nil {
-					log.Fatalf("[!] Failed to read CA certificate: %v", err)
+					return fmt.Errorf("reading CA certificate: %w", err)
 				}
 				pool := x509.NewCertPool()
 				pool.AppendCertsFromPEM(caCert)
@@ -49,14 +51,19 @@ func newServerCmd() *cobra.Command {
 			if fpName != "" {
 				fp, err := fingerprint.ByName(fpName)
 				if err != nil {
-					log.Fatalf("[!] Failed to load fingerprint: %v", err)
+					return fmt.Errorf("loading fingerprint: %w", err)
 				}
 				p.Fingerprint = fp
 				log.Printf("[+] Using TLS fingerprint: %s", fp.Name())
 			}
 
+			handler, err := proxy.ServerFrontHandler(cert, key)
+			if err != nil {
+				return err
+			}
+			p.Handler = handler
+
 			log.Printf("[+] Mode: server (TLS termination → backend %s)", backend)
-			p.Handler = proxy.ServerFrontHandler(cert, key)
 			return p.Run()
 		},
 	}

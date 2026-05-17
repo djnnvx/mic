@@ -157,7 +157,11 @@ func TestServerFront_Integration(t *testing.T) {
 		CAPool:      backendCAPool,
 		Fingerprint: fp,
 	}
-	proxyAddr := serveHandler(t, p, ServerFrontHandler(certFile, keyFile))
+	handler, err := ServerFrontHandler(certFile, keyFile)
+	if err != nil {
+		t.Fatalf("ServerFrontHandler: %v", err)
+	}
+	proxyAddr := serveHandler(t, p, handler)
 
 	tlsConn, err := tls.DialWithDialer(
 		&net.Dialer{Timeout: testTimeout},
