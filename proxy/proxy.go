@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"sync"
 
 	utls "github.com/bogdanfinn/utls"
@@ -37,9 +36,10 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 		helloID = p.Fingerprint.ClientHelloID()
 	}
 
-	serverName := host
-	if idx := strings.LastIndex(host, ":"); idx != -1 {
-		serverName = host[:idx]
+	serverName, _, err := net.SplitHostPort(host)
+	if err != nil {
+		tcpConn.Close()
+		return nil, fmt.Errorf("dialTarget: parse host %q: %w", host, err)
 	}
 
 	cfg := &utls.Config{ServerName: serverName}

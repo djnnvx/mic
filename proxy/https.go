@@ -6,8 +6,22 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strings"
 )
+
+// parseAuthority extracts the server name and a dial-ready "host:port" from
+// a CONNECT request's authority. If the input lacks an explicit port (rare —
+// CONNECT requires one), 443 is assumed. IPv6 literals in brackets are
+// handled (e.g. "[::1]:443" → "::1", "[::1]:443").
+func parseAuthority(authority string) (server, hostPort string) {
+	if h, _, err := net.SplitHostPort(authority); err == nil {
+		return h, authority
+	}
+	server = authority
+	if n := len(server); n >= 2 && server[0] == '[' && server[n-1] == ']' {
+		server = server[1 : n-1]
+	}
+	return server, net.JoinHostPort(server, "443")
+}
 
 func HttpsHandler(clientConn net.Conn, p *Proxy) {
 	defer clientConn.Close()
@@ -24,10 +38,7 @@ func HttpsHandler(clientConn net.Conn, p *Proxy) {
 		return
 	}
 
-	host := req.URL.Host
-	if !strings.Contains(host, ":") {
-		host = host + ":443"
-	}
+	serverName, host := parseAuthority(req.URL.Host)
 
 	log.Printf("Connecting to target: %s", host)
 	targetConn, err := p.dialTarget(host)
@@ -40,11 +51,6 @@ func HttpsHandler(clientConn net.Conn, p *Proxy) {
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
 	if p.LocalCA != nil {
-		serverName := host
-		if idx := strings.LastIndex(host, ":"); idx != -1 {
-			serverName = host[:idx]
-		}
-
 		cert, err := p.LocalCA.issueCert(serverName)
 		if err != nil {
 			log.Printf("Failed to issue cert for %s: %v", serverName, err)
