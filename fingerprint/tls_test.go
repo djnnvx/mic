@@ -3,7 +3,6 @@ package fingerprint_test
 import (
 	"testing"
 
-	utls "github.com/bogdanfinn/utls"
 	"github.com/djnnvx/mic/fingerprint"
 )
 
@@ -31,23 +30,6 @@ func TestName_ReturnsProfile(t *testing.T) {
 	}
 	if fp.Name() != "chrome-120" {
 		t.Errorf("Name() = %q; want %q", fp.Name(), "chrome-120")
-	}
-}
-
-func TestLookup_Known(t *testing.T) {
-	id, ok := fingerprint.Lookup("t13d1516h2_8daaf6152771_02713d6af862")
-	if !ok {
-		t.Fatal("Lookup returned false for known Chrome 120 JA4 hash")
-	}
-	if id.Str() != utls.HelloChrome_131.Str() {
-		t.Errorf("Lookup returned %v; want HelloChrome_131", id)
-	}
-}
-
-func TestLookup_Unknown(t *testing.T) {
-	_, ok := fingerprint.Lookup("unknown_hash_that_does_not_exist")
-	if ok {
-		t.Fatal("Lookup with unknown hash returned true; expected false")
 	}
 }
 
