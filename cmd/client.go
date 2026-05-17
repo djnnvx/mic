@@ -51,7 +51,7 @@ func newClientCmd() *cobra.Command {
 					return fmt.Errorf("loading/generating intercept CA: %w", err)
 				}
 				p.LocalCA = ca
-				log.Printf("[+] MitM CA ready — import %s, then: curl --cacert %s -x http://localhost%s https://<target>",
+				log.Printf("[+] MitM CA ready. Import %s, then: curl --cacert %s -x http://localhost%s https://<target>",
 					interceptCert, interceptCert, listen)
 			}
 

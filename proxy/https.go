@@ -9,9 +9,9 @@ import (
 )
 
 // parseAuthority extracts the server name and a dial-ready "host:port" from
-// a CONNECT request's authority. If the input lacks an explicit port (rare —
-// CONNECT requires one), 443 is assumed. IPv6 literals in brackets are
-// handled (e.g. "[::1]:443" → "::1", "[::1]:443").
+// a CONNECT request's authority. If the input lacks an explicit port (rare,
+// since CONNECT requires one), 443 is assumed. IPv6 literals in brackets are
+// handled (e.g. "[::1]:443" -> "::1", "[::1]:443").
 func parseAuthority(authority string) (server, hostPort string) {
 	if h, _, err := net.SplitHostPort(authority); err == nil {
 		return h, authority

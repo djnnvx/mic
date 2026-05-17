@@ -75,7 +75,7 @@ func probe(id utls.ClientHelloID) (string, error) {
 
 	if uconn.ConnectionState().NegotiatedProtocol == "h2" {
 		// Reuse the already-established uconn rather than letting the Transport
-		// dial again — the first handshake is the one that produced the JA4 we
+		// dial again. The first handshake is the one that produced the JA4 we
 		// want to measure.
 		cc, err := (&http2.Transport{}).NewClientConn(uconn)
 		if err != nil {

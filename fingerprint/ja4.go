@@ -104,7 +104,7 @@ func ParseClientHello(raw []byte) (*ClientHelloFields, error) {
 	}
 	r = r[cmLen:]
 
-	// Extensions are absent in very old TLS — not an error.
+	// Extensions are absent in very old TLS. Not an error.
 	if len(r) < 2 {
 		return fields, nil
 	}

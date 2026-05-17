@@ -7,11 +7,11 @@ servers, making your traffic look like a specific browser to any fingerprinting 
 
 Two modes are supported:
 
-- **client-front** — HTTP CONNECT proxy with optional MitM TLS interception. The proxy
+- **client-front**: HTTP CONNECT proxy with optional MitM TLS interception. The proxy
   generates a local CA, issues per-host leaf certs on the fly, terminates TLS from
   the client, and re-dials the target with the configured uTLS fingerprint. Standard
   tools (curl, browsers) work after importing the CA once.
-- **server-front** — the proxy terminates incoming TLS (with your own cert/key), then
+- **server-front**: the proxy terminates incoming TLS (with your own cert/key), then
   re-dials the backend with the configured fingerprint. Useful when the client cannot
   be configured to use a CONNECT proxy.
 
@@ -29,9 +29,11 @@ sequenceDiagram
         note over C,T: client-front mode (MitM TLS)
         C->>P: HTTP CONNECT target:443
         P->>T: TCP + uTLS handshake (configured fingerprint)
+        note right of P: JA4 = configured profile
         P-->>C: 200 Connection Established
         C->>P: TLS handshake (mic-issued cert for target)
         P-->>C: TLS established
+        note left of P: JA4S = stdlib crypto/tls (measured only)
         C->>P: HTTP request (decrypted by proxy)
         P->>T: request bytes (through uTLS tunnel)
         T-->>P: HTTP response (through uTLS)
@@ -42,7 +44,9 @@ sequenceDiagram
         note over C,T: server-front mode
         C->>P: TLS handshake (proxy cert)
         P-->>C: TLS established
+        note left of P: JA4S = stdlib crypto/tls (measured only)
         P->>T: TCP + uTLS handshake (configured fingerprint)
+        note right of P: JA4 = configured profile
         C->>P: HTTP request (decrypted by proxy)
         P->>T: request bytes (through uTLS tunnel)
         T-->>P: HTTP response (through uTLS)
@@ -50,8 +54,10 @@ sequenceDiagram
     end
 ```
 
-In both modes the target sees a TLS handshake that matches the configured fingerprint,
-not the default Go TLS fingerprint.
+In both modes the target sees a TLS handshake that matches the configured fingerprint
+(JA4), not the default Go TLS fingerprint. The ServerHello mic returns to the client
+(JA4S) is currently emitted by stdlib `crypto/tls` and is only measured, not yet
+spoofed. See the JA4S section below for details.
 
 ---
 
@@ -79,7 +85,7 @@ the proxy is transparently intercepted and re-dialled with the configured finger
 **Trust the CA** (pick whichever applies):
 
 ```bash
-# curl — pass on every call, or set CURL_CA_BUNDLE
+# curl: pass on every call, or set CURL_CA_BUNDLE
 curl --cacert ca.pem -x http://localhost:8080 https://tlsinfo.me/json
 
 # Debian / Ubuntu / Kali
@@ -93,7 +99,7 @@ After trusting, standard tools work without extra flags:
 
 ```bash
 curl -x http://localhost:8080 https://tlsinfo.me/json
-# check the "ja4" field — it should match the fingerprint you configured
+# check the "ja4" field. It should match the fingerprint you configured.
 ```
 
 Omit `--intercept-*` to run as a plain CONNECT proxy (no MitM, raw tunnel only).
@@ -154,7 +160,7 @@ preset actually emits. Re-run the probe after upgrading the utls dependency.
 # unit tests
 go test ./...
 
-# integration tests — spin up in-process TLS servers, no network required
+# integration tests: spin up in-process TLS servers, no network required
 go test -tags integration -v ./proxy/... ./fingerprint/...
 ```
 
@@ -164,3 +170,28 @@ by the proxy's uTLS engine and assert the computed JA4 hash matches the expected
 This is the offline equivalent of running `cmd/probe` against tlsinfo.me.
 
 CI runs both suites on every push via `.github/workflows/ci.yml`.
+
+---
+
+## JA4S (server-side fingerprint, measurement only)
+
+mic also computes JA4S, the fingerprint of the ServerHello it emits to clients.
+This is currently **measurement only**: there is no spoofing engine. The
+integration tests `TestServerFront_JA4S_Baseline` and `TestClientFront_JA4S_Baseline`
+capture the bytes mic writes during the TLS handshake and assert the JA4S matches
+a recorded baseline.
+
+The baseline is what stdlib `crypto/tls.Server` emits today: `t130200_1301_a56c5b993250`
+(TLS 1.3, no ALPN, `TLS_AES_128_GCM_SHA256`, default extension set). It applies to
+both modes because both terminate TLS with the same stdlib server.
+
+Why no spoofing yet:
+
+- `bogdanfinn/utls` does not expose server-side fingerprint control. Its `Server()`
+  delegates to stdlib's TLS state machine.
+- TLS 1.3 ServerHello carries only 2-3 extensions, so the JA4S surface is much
+  smaller than JA4.
+
+Spoofing would require either forking utls to add a `ServerHelloSpec`, or writing a
+custom TLS server. The measurement code is in place so we can see if that effort is
+worth it once we have real-world JA4S targets.

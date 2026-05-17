@@ -33,7 +33,7 @@ func (tc *teeConn) Read(b []byte) (int, error) { return tc.r.Read(b) }
 // The returned addr is "localhost:PORT" (not "127.0.0.1:PORT") so that
 // dialTarget uses a hostname SNI rather than an IP address. This matches the
 // "d" (domain) indicator in the stored JA4 fingerprint table, which was
-// measured against tlsinfo.me — also a hostname.
+// measured against tlsinfo.me, also a hostname.
 func captureJA4Server(t *testing.T) (addr string, certPool *x509.CertPool, ja4s <-chan string) {
 	t.Helper()
 
