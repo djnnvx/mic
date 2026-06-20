@@ -17,7 +17,7 @@ type Proxy struct {
 	ListenAddr  string
 	BackendAddr string // server-front: backend host:port
 	CAPool      *x509.CertPool
-	Fingerprint fingerprint.TLSApplier
+	Fingerprint *fingerprint.TLSFingerprint
 	LocalCA     *LocalCA // client-front: MitM CA for TLS interception
 	Handler     Handler
 }

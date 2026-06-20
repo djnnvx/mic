@@ -65,11 +65,11 @@ func TestParseServerHello_TLS13_Minimal(t *testing.T) {
 	if got := len(sh.Extensions); got != 2 {
 		t.Errorf("extension count = %d; want 2", got)
 	}
-	if len(sh.SupportedVersions) != 1 || sh.SupportedVersions[0] != 0x0304 {
-		t.Errorf("supported versions = %v; want [0x0304]", sh.SupportedVersions)
+	if sh.SupportedVersion != 0x0304 {
+		t.Errorf("supported version = 0x%04x; want 0x0304", sh.SupportedVersion)
 	}
-	if len(sh.ALPNValues) != 0 {
-		t.Errorf("alpn = %v; want none", sh.ALPNValues)
+	if sh.ALPN != "" {
+		t.Errorf("alpn = %q; want none", sh.ALPN)
 	}
 }
 
@@ -88,8 +88,8 @@ func TestParseServerHello_TLS13_WithALPN_h2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseServerHello: %v", err)
 	}
-	if len(sh.ALPNValues) != 1 || sh.ALPNValues[0] != "h2" {
-		t.Fatalf("alpn = %v; want [h2]", sh.ALPNValues)
+	if sh.ALPN != "h2" {
+		t.Fatalf("alpn = %q; want h2", sh.ALPN)
 	}
 }
 
@@ -106,8 +106,8 @@ func TestParseServerHello_TLS12_NoSupportedVersions(t *testing.T) {
 	if sh.LegacyVersion != 0x0303 {
 		t.Errorf("legacy version = 0x%04x; want 0x0303", sh.LegacyVersion)
 	}
-	if len(sh.SupportedVersions) != 0 {
-		t.Errorf("supported_versions present in TLS 1.2 fixture: %v", sh.SupportedVersions)
+	if sh.SupportedVersion != 0 {
+		t.Errorf("supported_version present in TLS 1.2 fixture: 0x%04x", sh.SupportedVersion)
 	}
 	if sh.CipherSuite != 0xc02f {
 		t.Errorf("cipher = 0x%04x; want 0xc02f", sh.CipherSuite)
@@ -163,9 +163,8 @@ func TestComputeJA4S_Shape(t *testing.T) {
 	sh := &ServerHelloFields{
 		LegacyVersion:     0x0303,
 		CipherSuite:       0x1301,
-		Extensions:        []uint16{0x002b, 0x0033},
-		SupportedVersions: []uint16{0x0304},
-		ALPNValues:        nil,
+		Extensions:       []uint16{0x002b, 0x0033},
+		SupportedVersion: 0x0304,
 	}
 	got := ComputeJA4S(sh)
 
@@ -181,8 +180,8 @@ func TestComputeJA4S_KnownFixture(t *testing.T) {
 	sh := &ServerHelloFields{
 		LegacyVersion:     0x0303,
 		CipherSuite:       0x1301,
-		Extensions:        []uint16{0x002b, 0x0033},
-		SupportedVersions: []uint16{0x0304},
+		Extensions:       []uint16{0x002b, 0x0033},
+		SupportedVersion: 0x0304,
 	}
 	got := ComputeJA4S(sh)
 	const want = "t130200_1301_" // prefix; suffix is the 12-hex hash we pin below
@@ -200,9 +199,9 @@ func TestComputeJA4S_ALPN_h2(t *testing.T) {
 	sh := &ServerHelloFields{
 		LegacyVersion:     0x0303,
 		CipherSuite:       0x1301,
-		Extensions:        []uint16{0x002b, 0x0010, 0x0033},
-		SupportedVersions: []uint16{0x0304},
-		ALPNValues:        []string{"h2"},
+		Extensions:       []uint16{0x002b, 0x0010, 0x0033},
+		SupportedVersion: 0x0304,
+		ALPN:             "h2",
 	}
 	got := ComputeJA4S(sh)
 	// nn=03, alpn=h2

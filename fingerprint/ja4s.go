@@ -9,39 +9,20 @@ import (
 
 // ServerHelloFields holds the parsed TLS ServerHello data used to compute JA4S.
 type ServerHelloFields struct {
-	LegacyVersion     uint16
-	CipherSuite       uint16   // single chosen suite
-	Extensions        []uint16 // non-GREASE extension types, wire order
-	SupportedVersions []uint16 // from ext 0x002b: in ServerHello, the single chosen version
-	ALPNValues        []string // from ext 0x0010: in ServerHello, the single chosen protocol
+	LegacyVersion    uint16
+	CipherSuite      uint16   // single chosen suite
+	Extensions       []uint16 // non-GREASE extension types, wire order
+	SupportedVersion uint16   // from ext 0x002b, single chosen version (0 if absent)
+	ALPN             string   // from ext 0x0010, single chosen protocol ("" if absent)
 }
 
 // ParseServerHello parses the first TLS handshake record from raw, expecting
 // a ServerHello. raw must start with a handshake record header (content type 0x16).
 func ParseServerHello(raw []byte) (*ServerHelloFields, error) {
-	if len(raw) < 5 {
-		return nil, fmt.Errorf("ja4s: record too short (%d bytes)", len(raw))
+	r, err := handshakeBody(raw, 0x02, "ja4s")
+	if err != nil {
+		return nil, err
 	}
-	if raw[0] != 0x16 {
-		return nil, fmt.Errorf("ja4s: not a handshake record (type=0x%02x)", raw[0])
-	}
-	recLen := int(binary.BigEndian.Uint16(raw[3:5]))
-	if len(raw) < 5+recLen {
-		return nil, fmt.Errorf("ja4s: record body truncated (need %d, have %d)", 5+recLen, len(raw))
-	}
-	hs := raw[5 : 5+recLen]
-
-	if len(hs) < 4 {
-		return nil, fmt.Errorf("ja4s: handshake header too short")
-	}
-	if hs[0] != 0x02 {
-		return nil, fmt.Errorf("ja4s: not a ServerHello (handshake type=0x%02x)", hs[0])
-	}
-	shLen := int(hs[1])<<16 | int(hs[2])<<8 | int(hs[3])
-	if len(hs) < 4+shLen {
-		return nil, fmt.Errorf("ja4s: ServerHello body truncated")
-	}
-	r := hs[4 : 4+shLen]
 
 	fields := &ServerHelloFields{}
 
@@ -105,7 +86,11 @@ func ParseServerHello(raw []byte) (*ServerHelloFields, error) {
 
 		switch extType {
 		case 0x002b:
-			parseServerSupportedVersion(extData, fields)
+			if len(extData) >= 2 {
+				if v := binary.BigEndian.Uint16(extData[:2]); !isGREASE(v) {
+					fields.SupportedVersion = v
+				}
+			}
 		case 0x0010:
 			parseServerALPN(extData, fields)
 		}
@@ -114,73 +99,48 @@ func ParseServerHello(raw []byte) (*ServerHelloFields, error) {
 	return fields, nil
 }
 
-// parseServerSupportedVersion reads the single chosen TLS version (2 bytes).
-// Unlike the ClientHello variant which carries a list, the ServerHello variant
-// is a bare uint16.
-func parseServerSupportedVersion(data []byte, f *ServerHelloFields) {
-	if len(data) < 2 {
-		return
-	}
-	v := binary.BigEndian.Uint16(data[:2])
-	if !isGREASE(v) {
-		f.SupportedVersions = append(f.SupportedVersions, v)
-	}
-}
-
-// parseServerALPN reads the ALPN extension as the server emits it. Wire format
-// is the same as in ClientHello, but the server only ever lists one protocol.
+// parseServerALPN reads the single protocol the server selected. Wire format
+// matches ClientHello, but the server lists exactly one.
 func parseServerALPN(data []byte, f *ServerHelloFields) {
-	if len(data) < 2 {
+	if len(data) < 3 {
 		return
 	}
 	listLen := int(binary.BigEndian.Uint16(data[:2]))
 	data = data[2:]
-	if len(data) < listLen {
+	if len(data) < listLen || listLen < 1 {
 		return
 	}
-	data = data[:listLen]
-	for len(data) >= 1 {
-		pLen := int(data[0])
-		data = data[1:]
-		if len(data) < pLen {
-			break
-		}
-		f.ALPNValues = append(f.ALPNValues, string(data[:pLen]))
-		data = data[pLen:]
+	pLen := int(data[0])
+	if 1+pLen > listLen || len(data) < 1+pLen {
+		return
 	}
+	f.ALPN = string(data[1 : 1+pLen])
 }
 
 // ComputeJA4S builds the JA4S hash from a parsed ServerHello.
 // Format: t<version><nn><alpn>_<cipher>_<exthash>
 // Always "t" for TCP; QUIC is not produced by mic.
 func ComputeJA4S(sh *ServerHelloFields) string {
-	return buildJA4Sa(sh) + "_" + buildJA4Sb(sh.CipherSuite) + "_" + buildJA4Sc(sh.Extensions)
+	return buildJA4Sa(sh) + "_" + fmt.Sprintf("%04x", sh.CipherSuite) + "_" + buildJA4Sc(sh.Extensions)
 }
 
 func buildJA4Sa(sh *ServerHelloFields) string {
 	ver := tlsVersionStr(sh.LegacyVersion)
-	if len(sh.SupportedVersions) > 0 {
-		ver = tlsVersionStr(sh.SupportedVersions[0])
+	if sh.SupportedVersion != 0 {
+		ver = tlsVersionStr(sh.SupportedVersion)
 	}
 
 	nn := min99(len(sh.Extensions))
 
 	alpn := "00"
-	if len(sh.ALPNValues) > 0 {
-		v := sh.ALPNValues[0]
-		switch {
-		case len(v) >= 2:
-			alpn = v[:2]
-		case len(v) == 1:
-			alpn = v + "0"
-		}
+	switch v := sh.ALPN; {
+	case len(v) >= 2:
+		alpn = v[:2]
+	case len(v) == 1:
+		alpn = v + "0"
 	}
 
 	return fmt.Sprintf("t%s%02d%s", ver, nn, alpn)
-}
-
-func buildJA4Sb(cipher uint16) string {
-	return fmt.Sprintf("%04x", cipher)
 }
 
 // buildJA4Sc hashes ServerHello extension types in wire order (no sort).

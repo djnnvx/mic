@@ -1,3 +1,5 @@
+// Package fingerprint provides implementations for controlling outbound TLS
+// connection fingerprints.
 package fingerprint
 
 import (

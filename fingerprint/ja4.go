@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -27,33 +27,43 @@ func isGREASE(v uint16) bool {
 	return v&0x0f == 0x0a && v>>8 == v&0xff
 }
 
-// ParseClientHello parses the first TLS handshake record from raw.
-// raw must start with a handshake record header (content type 0x16).
-func ParseClientHello(raw []byte) (*ClientHelloFields, error) {
+// handshakeBody unwraps the TLS record and handshake headers from raw,
+// verifying the record content type, the handshake type, and length fields.
+// It returns the handshake body. tag prefixes errors ("ja4" or "ja4s").
+func handshakeBody(raw []byte, hsType byte, tag string) ([]byte, error) {
 	if len(raw) < 5 {
-		return nil, fmt.Errorf("ja4: record too short (%d bytes)", len(raw))
+		return nil, fmt.Errorf("%s: record too short (%d bytes)", tag, len(raw))
 	}
 	if raw[0] != 0x16 {
-		return nil, fmt.Errorf("ja4: not a handshake record (type=0x%02x)", raw[0])
+		return nil, fmt.Errorf("%s: not a handshake record (type=0x%02x)", tag, raw[0])
 	}
 	recLen := int(binary.BigEndian.Uint16(raw[3:5]))
 	if len(raw) < 5+recLen {
-		return nil, fmt.Errorf("ja4: record body truncated (need %d, have %d)", 5+recLen, len(raw))
+		return nil, fmt.Errorf("%s: record body truncated (need %d, have %d)", tag, 5+recLen, len(raw))
 	}
 	hs := raw[5 : 5+recLen]
 
 	if len(hs) < 4 {
-		return nil, fmt.Errorf("ja4: handshake header too short")
+		return nil, fmt.Errorf("%s: handshake header too short", tag)
 	}
-	if hs[0] != 0x01 {
-		return nil, fmt.Errorf("ja4: not a ClientHello (handshake type=0x%02x)", hs[0])
+	if hs[0] != hsType {
+		return nil, fmt.Errorf("%s: unexpected handshake type 0x%02x (want 0x%02x)", tag, hs[0], hsType)
 	}
 	// Handshake length is 3 bytes, unlike most other TLS length fields.
-	chLen := int(hs[1])<<16 | int(hs[2])<<8 | int(hs[3])
-	if len(hs) < 4+chLen {
-		return nil, fmt.Errorf("ja4: ClientHello body truncated")
+	bodyLen := int(hs[1])<<16 | int(hs[2])<<8 | int(hs[3])
+	if len(hs) < 4+bodyLen {
+		return nil, fmt.Errorf("%s: handshake body truncated", tag)
 	}
-	r := hs[4 : 4+chLen]
+	return hs[4 : 4+bodyLen], nil
+}
+
+// ParseClientHello parses the first TLS handshake record from raw.
+// raw must start with a handshake record header (content type 0x16).
+func ParseClientHello(raw []byte) (*ClientHelloFields, error) {
+	r, err := handshakeBody(raw, 0x01, "ja4")
+	if err != nil {
+		return nil, err
+	}
 
 	fields := &ClientHelloFields{}
 
@@ -232,13 +242,7 @@ func ComputeJA4(ch *ClientHelloFields) string {
 func buildJA4a(ch *ClientHelloFields) string {
 	tlsVer := tlsVersionStr(ch.LegacyVersion)
 	if len(ch.SupportedVersions) > 0 {
-		max := uint16(0)
-		for _, v := range ch.SupportedVersions {
-			if v > max {
-				max = v
-			}
-		}
-		tlsVer = tlsVersionStr(max)
+		tlsVer = tlsVersionStr(slices.Max(ch.SupportedVersions))
 	}
 
 	sniChar := "n"
@@ -291,9 +295,8 @@ func tlsVersionStr(v uint16) string {
 }
 
 func buildJA4b(ciphers []uint16) string {
-	sorted := make([]uint16, len(ciphers))
-	copy(sorted, ciphers)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	sorted := slices.Clone(ciphers)
+	slices.Sort(sorted)
 
 	parts := make([]string, len(sorted))
 	for i, c := range sorted {
@@ -313,7 +316,7 @@ func buildJA4c(exts []uint16, sigAlgs []uint16) string {
 			filtered = append(filtered, e)
 		}
 	}
-	sort.Slice(filtered, func(i, j int) bool { return filtered[i] < filtered[j] })
+	slices.Sort(filtered)
 
 	extParts := make([]string, len(filtered))
 	for i, e := range filtered {

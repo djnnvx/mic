@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -55,7 +56,7 @@ func dialUTLS(ctx context.Context, id utls.ClientHelloID) (*utls.UConn, error) {
 	return uconn, nil
 }
 
-func decodeJA4(body interface{ Read([]byte) (int, error) }) (string, error) {
+func decodeJA4(body io.Reader) (string, error) {
 	var result struct {
 		JA4 string `json:"ja4"`
 	}
