@@ -1,6 +1,10 @@
 package proxy
 
-import "testing"
+import (
+	"net"
+	"testing"
+	"time"
+)
 
 func TestParseAuthority(t *testing.T) {
 	cases := []struct {
@@ -42,5 +46,39 @@ func TestParseAuthority(t *testing.T) {
 				t.Errorf("hostPort: got %q, want %q", gotHostPort, tc.wantHostPort)
 			}
 		})
+	}
+}
+
+func TestHttpsHandler_SilentPeerTimesOut(t *testing.T) {
+	orig := headerReadTimeout
+	headerReadTimeout = 200 * time.Millisecond
+	defer func() { headerReadTimeout = orig }()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		HttpsHandler(conn, &Proxy{})
+		close(done)
+	}()
+
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("net.Dial: %v", err)
+	}
+	defer client.Close()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("HttpsHandler did not return on a peer that sent nothing")
 	}
 }

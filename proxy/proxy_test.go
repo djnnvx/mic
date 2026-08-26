@@ -7,12 +7,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"io"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
+	utls "github.com/bogdanfinn/utls"
 	"github.com/djnnvx/mic/fingerprint"
 )
 
@@ -123,8 +126,100 @@ func TestDialTarget_FallbackToRandomized(t *testing.T) {
 
 	conn, err := p.dialTarget(ln.Addr().String())
 	if err != nil {
-		// HelloRandomized may select post-quantum curves unsupported by stdlib TLS.
-		t.Skipf("dialTarget with randomized preset: %v", err)
+		// HelloRandomized sometimes picks a curve the local TLS stack rejects.
+		// That is the only tolerated failure, anything else is a real bug.
+		if !strings.Contains(err.Error(), "CurvePreferences includes unsupported curve") {
+			t.Fatalf("dialTarget with randomized preset: %v", err)
+		}
+		return
 	}
-	conn.Close()
+	defer conn.Close()
+
+	if got := conn.ClientHelloID.Str(); got != utls.HelloRandomized.Str() {
+		t.Fatalf("ClientHelloID: got %q, want %q", got, utls.HelloRandomized.Str())
+	}
+}
+
+func TestServe_ReturnsWhenListenerClosed(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+
+	p := &Proxy{Handler: func(conn net.Conn, _ *Proxy) { conn.Close() }}
+
+	done := make(chan error, 1)
+	go func() { done <- p.Serve(ln) }()
+
+	time.Sleep(50 * time.Millisecond)
+	ln.Close()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("Serve returned %v, want net.ErrClosed", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Serve did not return after the listener was closed")
+	}
+}
+
+func TestPipe_HalfCloseDeliversResponse(t *testing.T) {
+	backend, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen backend: %v", err)
+	}
+	defer backend.Close()
+
+	go func() {
+		conn, err := backend.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		io.Copy(io.Discard, conn)
+		time.Sleep(100 * time.Millisecond)
+		conn.Write([]byte("PONG"))
+	}()
+
+	front, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen front: %v", err)
+	}
+	defer front.Close()
+
+	go func() {
+		conn, err := front.Accept()
+		if err != nil {
+			return
+		}
+		upstream, err := net.Dial("tcp", backend.Addr().String())
+		if err != nil {
+			conn.Close()
+			return
+		}
+		pipe(conn, upstream)
+	}()
+
+	client, err := net.Dial("tcp", front.Addr().String())
+	if err != nil {
+		t.Fatalf("net.Dial front: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.Write([]byte("PING")); err != nil {
+		t.Fatalf("writing request: %v", err)
+	}
+	if err := client.(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatalf("CloseWrite: %v", err)
+	}
+
+	client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	got, err := io.ReadAll(client)
+	if err != nil {
+		t.Fatalf("reading response: %v", err)
+	}
+	if string(got) != "PONG" {
+		t.Fatalf("response: got %q, want %q", got, "PONG")
+	}
 }

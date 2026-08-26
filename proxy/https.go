@@ -6,7 +6,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 )
+
+// Bounds the CONNECT header read only, never the proxied stream.
+// Tunable: tests lower it to keep the suite fast.
+var headerReadTimeout = 10 * time.Second
 
 // parseAuthority extracts the server name and a dial-ready "host:port" from
 // a CONNECT request's authority. If the input lacks an explicit port (rare,
@@ -27,7 +32,9 @@ func HttpsHandler(clientConn net.Conn, p *Proxy) {
 	defer clientConn.Close()
 
 	reader := bufio.NewReader(clientConn)
+	clientConn.SetReadDeadline(time.Now().Add(headerReadTimeout))
 	req, err := http.ReadRequest(reader)
+	clientConn.SetReadDeadline(time.Time{})
 	if err != nil {
 		log.Printf("Failed to read client request: %v", err)
 		return

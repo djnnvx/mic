@@ -3,14 +3,22 @@ package proxy
 import (
 	"bufio"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	utls "github.com/bogdanfinn/utls"
 	"github.com/djnnvx/mic/fingerprint"
+)
+
+const (
+	dialTimeout         = 10 * time.Second
+	acceptRetryDelay    = 5 * time.Millisecond
+	acceptMaxRetryDelay = 1 * time.Second
 )
 
 type Proxy struct {
@@ -27,7 +35,7 @@ type Handler func(conn net.Conn, p *Proxy)
 // dialTarget dials host (host:port) and returns a uTLS connection after a
 // successful handshake. Falls back to HelloRandomized when no fingerprint is set.
 func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
-	tcpConn, err := net.Dial("tcp", host)
+	tcpConn, err := net.DialTimeout("tcp", host, dialTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +74,33 @@ type bufferedConn struct {
 
 func (b *bufferedConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
-// pipe copies bidirectionally between a and b. When either direction finishes
-// it closes that side so the other goroutine unblocks.
+func (b *bufferedConn) CloseWrite() error {
+	if hc, ok := b.Conn.(halfCloser); ok {
+		return hc.CloseWrite()
+	}
+	return errNoHalfClose
+}
+
+var errNoHalfClose = errors.New("proxy: connection does not support half-close")
+
+// halfCloser is implemented by *net.TCPConn, *tls.Conn and *utls.UConn.
+type halfCloser interface {
+	CloseWrite() error
+}
+
+// closeWrite shuts down only the write side so the peer still sees the data
+// already sent. Falls back to a full Close when half-close is unavailable.
+func closeWrite(c io.Closer) {
+	if hc, ok := c.(halfCloser); ok && hc.CloseWrite() == nil {
+		return
+	}
+	c.Close()
+}
+
+// pipe copies bidirectionally between a and b. A finished direction only
+// half-closes its write side: a client that shuts down its write end after
+// sending a request must still receive the response. Both ends are fully
+// closed once both directions are done.
 func pipe(a, b io.ReadWriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -75,16 +108,18 @@ func pipe(a, b io.ReadWriteCloser) {
 	go func() {
 		defer wg.Done()
 		io.Copy(b, a)
-		b.Close()
+		closeWrite(b)
 	}()
 
 	go func() {
 		defer wg.Done()
 		io.Copy(a, b)
-		a.Close()
+		closeWrite(a)
 	}()
 
 	wg.Wait()
+	a.Close()
+	b.Close()
 }
 
 func (p *Proxy) Run() error {
@@ -98,12 +133,36 @@ func (p *Proxy) Run() error {
 	defer ln.Close()
 
 	log.Printf("[+] Starting proxy on %s", p.ListenAddr)
+	return p.Serve(ln)
+}
+
+// Serve accepts connections until the listener is closed. Transient accept
+// errors are retried with exponential backoff, mirroring net/http.Server.Serve.
+func (p *Proxy) Serve(ln net.Listener) error {
+	if p.Handler == nil {
+		return fmt.Errorf("proxy: Handler is required")
+	}
+
+	var delay time.Duration
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
+			if errors.Is(err, net.ErrClosed) {
+				return err
+			}
+			if delay == 0 {
+				delay = acceptRetryDelay
+			} else {
+				delay *= 2
+			}
+			if delay > acceptMaxRetryDelay {
+				delay = acceptMaxRetryDelay
+			}
+			log.Printf("Failed to accept connection: %v; retrying in %v", err, delay)
+			time.Sleep(delay)
 			continue
 		}
+		delay = 0
 		go p.Handler(conn, p)
 	}
 }
