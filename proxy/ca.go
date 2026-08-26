@@ -16,6 +16,17 @@ import (
 	"time"
 )
 
+const (
+	leafLifetime = 24 * time.Hour
+	// Re-issue this long before expiry so a leaf cannot expire mid-handshake.
+	leafRenewMargin = time.Minute
+)
+
+type cachedLeaf struct {
+	cert     tls.Certificate
+	notAfter time.Time
+}
+
 // LocalCA is a self-signed CA used to issue per-host certificates for
 // MitM TLS interception in client-front mode.
 type LocalCA struct {
@@ -24,7 +35,7 @@ type LocalCA struct {
 	derCert []byte // raw DER, appended as chain in issued certs
 
 	mu    sync.Mutex
-	cache map[string]tls.Certificate
+	cache map[string]cachedLeaf
 }
 
 func GenerateCA() (*LocalCA, error) {
@@ -37,10 +48,15 @@ func GenerateCA() (*LocalCA, error) {
 
 // LoadOrGenerateCA loads the CA from certPath + keyPath. If the files do not
 // exist it generates a new CA and writes it to those paths. Pass empty strings
-// for an ephemeral in-memory CA.
+// for both to get an ephemeral in-memory CA.
 func LoadOrGenerateCA(certPath, keyPath string) (*LocalCA, error) {
-	if certPath == "" || keyPath == "" {
+	if certPath == "" && keyPath == "" {
 		return GenerateCA()
+	}
+	// A half-specified pair used to silently return an ephemeral CA that was
+	// never written, so callers told users to import a file that never existed.
+	if certPath == "" || keyPath == "" {
+		return nil, fmt.Errorf("CA cert path and key path must both be set or both be empty")
 	}
 
 	ca, err := loadCA(certPath, keyPath)
@@ -78,7 +94,7 @@ func loadCA(certPath, keyPath string) (*LocalCA, error) {
 		cert:    cert,
 		key:     key,
 		derCert: pair.Certificate[0],
-		cache:   make(map[string]tls.Certificate),
+		cache:   make(map[string]cachedLeaf),
 	}, nil
 }
 
@@ -108,7 +124,7 @@ func buildCA(key *ecdsa.PrivateKey) (*LocalCA, error) {
 		cert:    cert,
 		key:     key,
 		derCert: der,
-		cache:   make(map[string]tls.Certificate),
+		cache:   make(map[string]cachedLeaf),
 	}, nil
 }
 
@@ -126,11 +142,16 @@ func (ca *LocalCA) Save(certPath, keyPath string) error {
 	if err != nil {
 		return err
 	}
-	kf, err := os.Create(keyPath)
+	kf, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer kf.Close()
+	// O_CREATE's mode is ignored when the file already exists, and the mode of a
+	// new file is masked by umask, so set it explicitly either way.
+	if err := kf.Chmod(0o600); err != nil {
+		return err
+	}
 	return pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 }
 
@@ -140,14 +161,14 @@ func (ca *LocalCA) CertPEM() []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.derCert})
 }
 
-// issueCert returns a leaf certificate for host signed by the CA, issuing and
-// caching a new one on first call.
+// issueCert returns a leaf certificate for host signed by the CA, issuing a new
+// one when the host is unseen or its cached leaf is at or near expiry.
 func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
 
-	if c, ok := ca.cache[host]; ok {
-		return c, nil
+	if c, ok := ca.cache[host]; ok && time.Now().Before(c.notAfter.Add(-leafRenewMargin)) {
+		return c.cert, nil
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -158,11 +179,12 @@ func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
+	notAfter := time.Now().Add(leafLifetime)
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: host},
 		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
@@ -180,6 +202,6 @@ func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 		Certificate: [][]byte{der, ca.derCert}, // CA appended so clients can verify the chain
 		PrivateKey:  key,
 	}
-	ca.cache[host] = cert
+	ca.cache[host] = cachedLeaf{cert: cert, notAfter: notAfter}
 	return cert, nil
 }
