@@ -94,8 +94,8 @@ func TestParseClientHello_Fields(t *testing.T) {
 	if want := []uint16{0x0000, 0x002b, 0x0010, 0x000d, 0x0033}; !equalU16(ch.Extensions, want) {
 		t.Errorf("extensions = %v; want %v", ch.Extensions, want)
 	}
-	if ch.SNIHost != "example.com" || ch.SNIIsIP {
-		t.Errorf("SNI = %q (ip=%v); want example.com (ip=false)", ch.SNIHost, ch.SNIIsIP)
+	if ch.SNIHost != "example.com" {
+		t.Errorf("SNI = %q; want example.com", ch.SNIHost)
 	}
 	if want := []uint16{0x0304}; !equalU16(ch.SupportedVersions, want) {
 		t.Errorf("supported versions = %v; want %v", ch.SupportedVersions, want)
@@ -108,14 +108,103 @@ func TestParseClientHello_Fields(t *testing.T) {
 	}
 }
 
-func TestParseClientHello_SNI_IP(t *testing.T) {
+// An IP literal in SNI is still an SNI extension, so JA4_a stays "d".
+// The spec keys on extension presence, never on the value.
+func TestComputeJA4_a_SNI_IPLiteral(t *testing.T) {
 	exts := ext(0x0000, sniData("192.0.2.1"))
 	ch, err := ParseClientHello(buildClientHello(0x0303, []uint16{0x1301}, exts))
 	if err != nil {
 		t.Fatalf("ParseClientHello: %v", err)
 	}
-	if ch.SNIHost != "192.0.2.1" || !ch.SNIIsIP {
-		t.Errorf("SNI = %q (ip=%v); want 192.0.2.1 (ip=true)", ch.SNIHost, ch.SNIIsIP)
+	if ch.SNIHost != "192.0.2.1" {
+		t.Errorf("SNI = %q; want 192.0.2.1", ch.SNIHost)
+	}
+	if got := ComputeJA4(ch)[:8]; got != "t12d0101" {
+		t.Errorf("JA4_a = %q; want %q", got, "t12d0101")
+	}
+}
+
+func TestParseClientHello_SigAlgsGREASEFiltered(t *testing.T) {
+	exts := ext(0x000d, sigAlgsData(0x0a0a, 0x0403, 0x1a1a))
+	ch, err := ParseClientHello(buildClientHello(0x0303, []uint16{0x1301}, exts))
+	if err != nil {
+		t.Fatalf("ParseClientHello: %v", err)
+	}
+	if want := []uint16{0x0403}; !equalU16(ch.SigAlgs, want) {
+		t.Errorf("sig algs = %v; want %v (GREASE filtered)", ch.SigAlgs, want)
+	}
+}
+
+func TestTLSVersionStr(t *testing.T) {
+	cases := map[uint16]string{
+		0x0304: "13", 0x0303: "12", 0x0302: "11", 0x0301: "10",
+		0x0300: "s3", 0x0002: "s2",
+		0xfeff: "d1", 0xfefd: "d2", 0xfefc: "d3",
+		0x0999: "00",
+	}
+	for v, want := range cases {
+		if got := tlsVersionStr(v); got != want {
+			t.Errorf("tlsVersionStr(0x%04x) = %q; want %q", v, got, want)
+		}
+	}
+}
+
+// The 8 hex-fallback examples from the FoxIO spec, plus the plain cases.
+// Checked end to end so the ALPN bytes travel through the parser.
+func TestComputeJA4_a_ALPNValues(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"http/1.1", "h1"},
+		{"h2", "h2"},
+		{"x", "xx"},
+		{"", "00"},
+		{"\xab", "ab"},
+		{"\x20", "20"},
+		{"\xab\xcd", "ad"},
+		{"\x20\x61", "21"},
+		{"\x30\xab", "3b"},
+		{"\x61\x20", "60"},
+		{"\x30\x31\xab\xcd", "3d"},
+		{"\x30\xab\xcd\x31", "01"}, // both end bytes alphanumeric, middle ignored
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%x", tc.in), func(t *testing.T) {
+			exts := ext(0x0010, alpnData(tc.in))
+			ch, err := ParseClientHello(buildClientHello(0x0303, []uint16{0x1301}, exts))
+			if err != nil {
+				t.Fatalf("ParseClientHello: %v", err)
+			}
+			want := "t12i0101" + tc.want
+			if got := ComputeJA4(ch)[:len(want)]; got != want {
+				t.Errorf("JA4_a = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestBuildJA4b_EmptyCiphers(t *testing.T) {
+	if got := buildJA4b(nil); got != "000000000000" {
+		t.Errorf("buildJA4b(nil) = %q; want 000000000000", got)
+	}
+}
+
+// Only SNI and ALPN present: both are filtered out, so JA4_c has no values.
+func TestBuildJA4c_EmptyFilteredExts(t *testing.T) {
+	if got := buildJA4c([]uint16{0x0000, 0x0010}, []uint16{0x0403}); got != "000000000000" {
+		t.Errorf("buildJA4c = %q; want 000000000000", got)
+	}
+}
+
+// Spec vector: with no signature algorithms the trailing "_" is omitted.
+func TestBuildJA4c_NoSigAlgsOmitsSeparator(t *testing.T) {
+	exts := []uint16{
+		0x0005, 0x000a, 0x000b, 0x000d, 0x0012, 0x0015, 0x0017, 0x001b,
+		0x0023, 0x002b, 0x002d, 0x0033, 0x4469, 0xff01,
+	}
+	if got := buildJA4c(exts, nil); got != "6d807ffa2a79" {
+		t.Errorf("buildJA4c = %q; want 6d807ffa2a79", got)
 	}
 }
 
@@ -187,14 +276,56 @@ func TestComputeJA4_a_Indicators(t *testing.T) {
 			legacyVer:  0x0303,
 			ciphers:    []uint16{0x1301, 0x1302},
 			exts:       ext(0x0033, []byte{}),
-			wantPrefix: "t12n0201", // legacy 1.2, no SNI -> n, 2 ciphers, 1 ext, alpn 00
+			wantPrefix: "t12i0201", // legacy 1.2, no SNI ext -> i, 2 ciphers, 1 ext, alpn 00
 		},
 		{
 			name:       "supported_versions max wins over legacy",
 			legacyVer:  0x0301,
 			ciphers:    []uint16{0x1301},
 			exts:       ext(0x002b, clientSuppVerData(0x0303, 0x0304)),
-			wantPrefix: "t13n0101", // max(1.2,1.3)=1.3
+			wantPrefix: "t13i0101", // max(1.2,1.3)=1.3
+		},
+		{
+			name:       "SNI extension present",
+			legacyVer:  0x0303,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0000, sniData("example.com")),
+			wantPrefix: "t12d0101",
+		},
+		{
+			name:       "empty SNI extension still counts as present",
+			legacyVer:  0x0303,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0000, []byte{}),
+			wantPrefix: "t12d0101",
+		},
+		{
+			name:       "alpn http/1.1 uses first and last",
+			legacyVer:  0x0303,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0010, alpnData("http/1.1", "h2")),
+			wantPrefix: "t12i0101h1",
+		},
+		{
+			name:       "single-character alpn is doubled",
+			legacyVer:  0x0303,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0010, alpnData("x")),
+			wantPrefix: "t12i0101xx",
+		},
+		{
+			name:       "non-alphanumeric alpn falls back to hex",
+			legacyVer:  0x0303,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0010, alpnData("\x20\x61")),
+			wantPrefix: "t12i010121",
+		},
+		{
+			name:       "sslv3 legacy version",
+			legacyVer:  0x0300,
+			ciphers:    []uint16{0x1301},
+			exts:       ext(0x0033, []byte{}),
+			wantPrefix: "ts3i0101",
 		},
 	}
 	for _, tc := range tests {
@@ -208,6 +339,20 @@ func TestComputeJA4_a_Indicators(t *testing.T) {
 				t.Errorf("JA4_a = %q; want %q", a, tc.wantPrefix)
 			}
 		})
+	}
+}
+
+// Both hash fields hit the no-values sentinel: no ciphers, and the only two
+// extensions are the ones JA4_c filters out.
+func TestComputeJA4_BothSentinels(t *testing.T) {
+	exts := append(ext(0x0000, sniData("example.com")), ext(0x0010, alpnData("h2"))...)
+	ch, err := ParseClientHello(buildClientHello(0x0303, nil, exts))
+	if err != nil {
+		t.Fatalf("ParseClientHello: %v", err)
+	}
+	const want = "t12d0002h2_000000000000_000000000000"
+	if got := ComputeJA4(ch); got != want {
+		t.Errorf("JA4 = %q; want %q", got, want)
 	}
 }
 

@@ -3,11 +3,15 @@ package fingerprint
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
-	"net"
 	"slices"
 	"strings"
 )
+
+// noValues is the JA4 placeholder for a field with no values. The spec uses it
+// rather than sha256 of the empty string so an empty field is visible.
+const noValues = "000000000000"
 
 // ClientHelloFields holds the parsed TLS ClientHello data used to compute JA4.
 type ClientHelloFields struct {
@@ -15,7 +19,6 @@ type ClientHelloFields struct {
 	CipherSuites      []uint16 // non-GREASE, wire order
 	Extensions        []uint16 // non-GREASE extension types, wire order
 	SNIHost           string
-	SNIIsIP           bool
 	SupportedVersions []uint16 // from ext 0x002b, non-GREASE
 	ALPNValues        []string // from ext 0x0010
 	SigAlgs           []uint16 // from ext 0x000d, wire order
@@ -176,7 +179,6 @@ func parseSNI(data []byte, f *ClientHelloFields) {
 		data = data[nameLen:]
 		if nameType == 0 { // host_name (the only defined type)
 			f.SNIHost = name
-			f.SNIIsIP = net.ParseIP(name) != nil
 			return
 		}
 	}
@@ -231,7 +233,10 @@ func parseSigAlgs(data []byte, f *ClientHelloFields) {
 		return
 	}
 	for i := 0; i < listLen; i += 2 {
-		f.SigAlgs = append(f.SigAlgs, binary.BigEndian.Uint16(data[i:i+2]))
+		// RFC 8701 permits GREASE here too.
+		if a := binary.BigEndian.Uint16(data[i : i+2]); !isGREASE(a) {
+			f.SigAlgs = append(f.SigAlgs, a)
+		}
 	}
 }
 
@@ -245,13 +250,10 @@ func buildJA4a(ch *ClientHelloFields) string {
 		tlsVer = tlsVersionStr(slices.Max(ch.SupportedVersions))
 	}
 
-	sniChar := "n"
-	if ch.SNIHost != "" {
-		if ch.SNIIsIP {
-			sniChar = "i"
-		} else {
-			sniChar = "d"
-		}
+	// The spec keys on presence of the SNI extension, not on what it contains.
+	sniChar := "i"
+	if slices.Contains(ch.Extensions, 0x0000) {
+		sniChar = "d"
 	}
 
 	nc := min99(len(ch.CipherSuites))
@@ -259,16 +261,30 @@ func buildJA4a(ch *ClientHelloFields) string {
 
 	alpn := "00"
 	if len(ch.ALPNValues) > 0 {
-		v := ch.ALPNValues[0]
-		switch {
-		case len(v) >= 2:
-			alpn = v[:2]
-		case len(v) == 1:
-			alpn = v + "0"
-		}
+		alpn = alpnChars(ch.ALPNValues[0])
 	}
 
 	return fmt.Sprintf("t%s%s%02d%02d%s", tlsVer, sniChar, nc, ne, alpn)
+}
+
+// alpnChars is the two-character ALPN field: the first and last bytes of the
+// value. If either end byte is not ASCII alphanumeric, the whole value is
+// hex-encoded and the first and last characters of that hex string are used.
+// This also keeps client-controlled raw bytes out of the fingerprint.
+func alpnChars(v string) string {
+	if v == "" {
+		return "00"
+	}
+	first, last := v[0], v[len(v)-1]
+	if !isALPNAlnum(first) || !isALPNAlnum(last) {
+		h := hex.EncodeToString([]byte(v))
+		first, last = h[0], h[len(h)-1]
+	}
+	return string([]byte{first, last})
+}
+
+func isALPNAlnum(b byte) bool {
+	return b >= '0' && b <= '9' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
 }
 
 // min99 caps n at 99, the maximum that fits in the two-digit JA4_a counter.
@@ -289,12 +305,25 @@ func tlsVersionStr(v uint16) string {
 		return "11"
 	case 0x0301:
 		return "10"
+	case 0x0300:
+		return "s3"
+	case 0x0002:
+		return "s2"
+	case 0xfeff:
+		return "d1"
+	case 0xfefd:
+		return "d2"
+	case 0xfefc:
+		return "d3"
 	default:
 		return "00"
 	}
 }
 
 func buildJA4b(ciphers []uint16) string {
+	if len(ciphers) == 0 {
+		return noValues
+	}
 	sorted := slices.Clone(ciphers)
 	slices.Sort(sorted)
 
@@ -316,18 +345,26 @@ func buildJA4c(exts []uint16, sigAlgs []uint16) string {
 			filtered = append(filtered, e)
 		}
 	}
+	if len(filtered) == 0 {
+		return noValues
+	}
 	slices.Sort(filtered)
 
 	extParts := make([]string, len(filtered))
 	for i, e := range filtered {
 		extParts[i] = fmt.Sprintf("%04x", e)
 	}
+	preimage := strings.Join(extParts, ",")
 
-	sigParts := make([]string, len(sigAlgs))
-	for i, s := range sigAlgs {
-		sigParts[i] = fmt.Sprintf("%04x", s)
+	// No separator at all when there are no signature algorithms.
+	if len(sigAlgs) > 0 {
+		sigParts := make([]string, len(sigAlgs))
+		for i, s := range sigAlgs {
+			sigParts[i] = fmt.Sprintf("%04x", s)
+		}
+		preimage += "_" + strings.Join(sigParts, ",")
 	}
 
-	h := sha256.Sum256([]byte(strings.Join(extParts, ",") + "_" + strings.Join(sigParts, ",")))
+	h := sha256.Sum256([]byte(preimage))
 	return fmt.Sprintf("%x", h)[:12]
 }

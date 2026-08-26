@@ -139,19 +139,26 @@ func TestParseServerHello_GREASEFiltered(t *testing.T) {
 
 func TestParseServerHello_Errors(t *testing.T) {
 	cases := []struct {
-		name string
-		raw  []byte
+		name    string
+		raw     []byte
+		wantErr bool
 	}{
-		{"empty", nil},
-		{"too short", []byte{0x16, 0x03}},
-		{"wrong content type", []byte{0x17, 0x03, 0x03, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00}},
-		{"wrong handshake type (ClientHello)", []byte{0x16, 0x03, 0x03, 0x00, 0x04, 0x01, 0x00, 0x00, 0x00}},
-		{"truncated record", []byte{0x16, 0x03, 0x03, 0x00, 0xff, 0x02, 0x00, 0x00, 0x00}},
+		{"empty", nil, true},
+		{"too short", []byte{0x16, 0x03}, true},
+		{"wrong content type", []byte{0x17, 0x03, 0x03, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00}, true},
+		{"wrong handshake type (ClientHello)", []byte{0x16, 0x03, 0x03, 0x00, 0x04, 0x01, 0x00, 0x00, 0x00}, true},
+		{"truncated record", []byte{0x16, 0x03, 0x03, 0x00, 0xff, 0x02, 0x00, 0x00, 0x00}, true},
+		// Positive control: without it, a parser that always errors keeps this table green.
+		{"valid ServerHello", buildServerHello(0x0303, 32, 0x1301, ext(0x002b, []byte{0x03, 0x04})), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := ParseServerHello(tc.raw); err == nil {
+			_, err := ParseServerHello(tc.raw)
+			if tc.wantErr && err == nil {
 				t.Errorf("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("expected no error, got %v", err)
 			}
 		})
 	}
@@ -161,8 +168,8 @@ func TestComputeJA4S_Shape(t *testing.T) {
 	// Synthesize a typical TLS 1.3 ServerHello with [supported_versions, key_share]
 	// and assert the output shape: t<ver><nn><alpn>_<cipher>_<12hex>
 	sh := &ServerHelloFields{
-		LegacyVersion:     0x0303,
-		CipherSuite:       0x1301,
+		LegacyVersion:    0x0303,
+		CipherSuite:      0x1301,
 		Extensions:       []uint16{0x002b, 0x0033},
 		SupportedVersion: 0x0304,
 	}
@@ -175,30 +182,67 @@ func TestComputeJA4S_Shape(t *testing.T) {
 }
 
 func TestComputeJA4S_KnownFixture(t *testing.T) {
-	// Pinned value computed from this exact input. Acts as a regression guard
-	// against accidental changes to the hashing/format.
+	// The extension list is DESCENDING on purpose. JA4S hashes wire order and
+	// must not sort; an ascending fixture cannot tell the two apart.
 	sh := &ServerHelloFields{
-		LegacyVersion:     0x0303,
-		CipherSuite:       0x1301,
-		Extensions:       []uint16{0x002b, 0x0033},
+		LegacyVersion:    0x0303,
+		CipherSuite:      0x1301,
+		Extensions:       []uint16{0x0033, 0x002b},
 		SupportedVersion: 0x0304,
 	}
 	got := ComputeJA4S(sh)
-	const want = "t130200_1301_" // prefix; suffix is the 12-hex hash we pin below
+	const want = "t130200_1301_"
 	if got[:len(want)] != want {
 		t.Errorf("JA4S prefix = %q; want prefix %q", got, want)
 	}
-	// Hash of "002b,0033". Pinned: if this changes, the algorithm is wrong.
-	const wantHash = "a56c5b993250"
+	// sha256("0033,002b")[:12]. Sorting would give sha256("002b,0033")[:12]
+	// = a56c5b993250 instead, which this pin rejects.
+	const wantHash = "234ea6891581"
 	if got[len(want):] != wantHash {
 		t.Errorf("JA4S ext hash = %q; want %q", got[len(want):], wantHash)
 	}
 }
 
+func TestComputeJA4S_EmptyExtensions(t *testing.T) {
+	// Pre-TLS-1.3 ServerHello with no extensions block: JA4S_c is all zeroes,
+	// not sha256("").
+	sh := &ServerHelloFields{LegacyVersion: 0x0303, CipherSuite: 0xc02f}
+	if got := ComputeJA4S(sh); got != "t120000_c02f_000000000000" {
+		t.Errorf("JA4S = %q; want t120000_c02f_000000000000", got)
+	}
+}
+
+func TestJA4SALPNCode(t *testing.T) {
+	cases := []struct {
+		alpn string
+		want string
+	}{
+		{"", "00"},
+		{"h2", "h2"},
+		{"http/1.1", "h1"},
+		{"h", "hh"},
+		{"h3", "h3"},
+		{"\xab", "ab"},
+		{"\x20", "20"},
+		{"\xab\xcd", "ad"},
+		{"\x20\x61", "21"},
+		{"\x30\xab", "3b"},
+		{"\x61\x20", "60"},
+		{"\x30\x31\xab\xcd", "3d"},
+		// Both end bytes are alphanumeric, so the hex fallback must NOT trigger.
+		{"\x30\xab\xcd\x31", "01"},
+	}
+	for _, tc := range cases {
+		if got := ja4sALPNCode(tc.alpn); got != tc.want {
+			t.Errorf("ja4sALPNCode(%q) = %q; want %q", tc.alpn, got, tc.want)
+		}
+	}
+}
+
 func TestComputeJA4S_ALPN_h2(t *testing.T) {
 	sh := &ServerHelloFields{
-		LegacyVersion:     0x0303,
-		CipherSuite:       0x1301,
+		LegacyVersion:    0x0303,
+		CipherSuite:      0x1301,
 		Extensions:       []uint16{0x002b, 0x0010, 0x0033},
 		SupportedVersion: 0x0304,
 		ALPN:             "h2",

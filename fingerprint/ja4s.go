@@ -3,6 +3,7 @@ package fingerprint
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -132,20 +133,37 @@ func buildJA4Sa(sh *ServerHelloFields) string {
 
 	nn := min99(len(sh.Extensions))
 
-	alpn := "00"
-	switch v := sh.ALPN; {
-	case len(v) >= 2:
-		alpn = v[:2]
-	case len(v) == 1:
-		alpn = v + "0"
-	}
+	return fmt.Sprintf("t%s%02d%s", ver, nn, ja4sALPNCode(sh.ALPN))
+}
 
-	return fmt.Sprintf("t%s%02d%s", ver, nn, alpn)
+// ja4sALPNCode encodes the negotiated ALPN as the JA4 two-character code:
+// first and last byte of the value. If either end byte is not ASCII
+// alphanumeric, hex-encode the whole value and take the first and last hex
+// characters instead. Duplicated from the JA4 side on purpose so the two
+// fingerprints stay independently editable.
+func ja4sALPNCode(v string) string {
+	if v == "" {
+		return "00"
+	}
+	b := []byte(v)
+	first, last := b[0], b[len(b)-1]
+	if !ja4sIsAlnum(first) || !ja4sIsAlnum(last) {
+		h := hex.EncodeToString(b)
+		return string(h[0]) + string(h[len(h)-1])
+	}
+	return string(first) + string(last)
+}
+
+func ja4sIsAlnum(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
 // buildJA4Sc hashes ServerHello extension types in wire order (no sort).
 // This is the difference from JA4_c, which sorts.
 func buildJA4Sc(exts []uint16) string {
+	if len(exts) == 0 {
+		return "000000000000"
+	}
 	parts := make([]string, len(exts))
 	for i, e := range exts {
 		parts[i] = fmt.Sprintf("%04x", e)
