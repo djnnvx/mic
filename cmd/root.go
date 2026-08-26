@@ -1,11 +1,27 @@
 package cmd
 
 import (
+	"crypto/x509"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
+
+// loadCAPool reads a PEM bundle into a cert pool. AppendCertsFromPEM reports
+// failure only through its return value, and an empty pool makes every upstream
+// handshake fail with "unknown authority" instead of naming the real cause.
+func loadCAPool(path string) (*x509.CertPool, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading CA certificate: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("no certificates found in %s", path)
+	}
+	return pool, nil
+}
 
 var SKID_ASCII_ART = `
 

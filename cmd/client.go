@@ -1,15 +1,23 @@
 package cmd
 
 import (
-	"crypto/x509"
 	"fmt"
 	"log"
-	"os"
+	"strings"
 
 	"github.com/djnnvx/mic/fingerprint"
 	"github.com/djnnvx/mic/proxy"
 	"github.com/spf13/cobra"
 )
+
+// proxyURL renders a listen address as something a user can paste into curl -x.
+// A bare ":8080" needs a host.
+func proxyURL(listen string) string {
+	if strings.HasPrefix(listen, ":") {
+		return "localhost" + listen
+	}
+	return listen
+}
 
 func newClientCmd() *cobra.Command {
 	var (
@@ -27,12 +35,10 @@ func newClientCmd() *cobra.Command {
 			p := &proxy.Proxy{ListenAddr: listen}
 
 			if caPath != "" {
-				caCert, err := os.ReadFile(caPath)
+				pool, err := loadCAPool(caPath)
 				if err != nil {
-					return fmt.Errorf("reading CA certificate: %w", err)
+					return err
 				}
-				pool := x509.NewCertPool()
-				pool.AppendCertsFromPEM(caCert)
 				p.CAPool = pool
 			}
 
@@ -45,14 +51,17 @@ func newClientCmd() *cobra.Command {
 				log.Printf("[+] Using TLS fingerprint: %s", fp.Name())
 			}
 
-			if interceptCert != "" || interceptKey != "" {
+			if (interceptCert == "") != (interceptKey == "") {
+				return fmt.Errorf("--intercept-cert and --intercept-key must be given together")
+			}
+			if interceptCert != "" {
 				ca, err := proxy.LoadOrGenerateCA(interceptCert, interceptKey)
 				if err != nil {
 					return fmt.Errorf("loading/generating intercept CA: %w", err)
 				}
 				p.LocalCA = ca
-				log.Printf("[+] MitM CA ready. Import %s, then: curl --cacert %s -x http://localhost%s https://<target>",
-					interceptCert, interceptCert, listen)
+				log.Printf("[+] MitM CA ready. Import %s, then: curl --cacert %s -x http://%s https://<target>",
+					interceptCert, interceptCert, proxyURL(listen))
 			}
 
 			log.Printf("[+] Mode: client (HTTP CONNECT proxy on %s)", listen)

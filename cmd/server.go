@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/djnnvx/mic/fingerprint"
 	"github.com/djnnvx/mic/proxy"
@@ -39,12 +37,10 @@ func newServerCmd() *cobra.Command {
 			}
 
 			if caPath != "" {
-				caCert, err := os.ReadFile(caPath)
+				pool, err := loadCAPool(caPath)
 				if err != nil {
-					return fmt.Errorf("reading CA certificate: %w", err)
+					return err
 				}
-				pool := x509.NewCertPool()
-				pool.AppendCertsFromPEM(caCert)
 				p.CAPool = pool
 			}
 
