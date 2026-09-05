@@ -76,9 +76,7 @@ func writeTempCertKey(t *testing.T) (certFile, keyFile string, pool *x509.CertPo
 	return certFile, keyFile, pool
 }
 
-// TestClientFront_Integration tests the full client-front (HTTP CONNECT) flow:
-//
-//	client → TCP CONNECT → proxy → uTLS(Chrome120) → httptest.TLSServer
+// client → TCP CONNECT → proxy → uTLS(Chrome120) → httptest.TLSServer
 func TestClientFront_Integration(t *testing.T) {
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
@@ -116,8 +114,8 @@ func TestClientFront_Integration(t *testing.T) {
 		t.Fatalf("CONNECT status: %d; want 200", resp.StatusCode)
 	}
 
-	// The proxy has already done uTLS to the target; raw bytes we send here are
-	// wrapped in that TLS connection on our behalf.
+	// The proxy already handshaked uTLS to the target, so these raw bytes travel
+	// inside that TLS connection.
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", targetAddr)
 
 	resp, err = http.ReadResponse(reader, nil)
@@ -133,9 +131,7 @@ func TestClientFront_Integration(t *testing.T) {
 	t.Logf("response body: %s", body)
 }
 
-// TestServerFront_Integration tests the server-front flow:
-//
-//	client → TLS → proxy (terminates TLS) → uTLS(Chrome120) → httptest.TLSServer
+// client → TLS → proxy (terminates TLS) → uTLS(Chrome120) → httptest.TLSServer
 func TestServerFront_Integration(t *testing.T) {
 	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
@@ -174,8 +170,6 @@ func TestServerFront_Integration(t *testing.T) {
 	defer tlsConn.Close()
 	tlsConn.SetDeadline(time.Now().Add(testTimeout))
 
-	// The proxy decrypts our TLS and re-encrypts with the configured fingerprint
-	// before forwarding to the backend.
 	fmt.Fprintf(tlsConn, "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
 
 	reader := bufio.NewReader(tlsConn)

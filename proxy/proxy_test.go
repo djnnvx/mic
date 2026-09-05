@@ -127,7 +127,6 @@ func TestDialTarget_FallbackToRandomized(t *testing.T) {
 	conn, err := p.dialTarget(ln.Addr().String())
 	if err != nil {
 		// HelloRandomized sometimes picks a curve the local TLS stack rejects.
-		// That is the only tolerated failure, anything else is a real bug.
 		if !strings.Contains(err.Error(), "CurvePreferences includes unsupported curve") {
 			t.Fatalf("dialTarget with randomized preset: %v", err)
 		}

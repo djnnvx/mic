@@ -136,11 +136,9 @@ func buildJA4Sa(sh *ServerHelloFields) string {
 	return fmt.Sprintf("t%s%02d%s", ver, nn, ja4sALPNCode(sh.ALPN))
 }
 
-// ja4sALPNCode encodes the negotiated ALPN as the JA4 two-character code:
-// first and last byte of the value. If either end byte is not ASCII
-// alphanumeric, hex-encode the whole value and take the first and last hex
-// characters instead. Duplicated from the JA4 side on purpose so the two
-// fingerprints stay independently editable.
+// ja4sALPNCode encodes the negotiated ALPN as the JA4 two-character code: first
+// and last byte of the value. If either end byte is not ASCII alphanumeric,
+// hex-encode the whole value and take the first and last hex characters instead.
 func ja4sALPNCode(v string) string {
 	if v == "" {
 		return "00"
@@ -158,8 +156,8 @@ func ja4sIsAlnum(c byte) bool {
 	return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
-// buildJA4Sc hashes ServerHello extension types in wire order (no sort).
-// This is the difference from JA4_c, which sorts.
+// buildJA4Sc hashes ServerHello extension types in wire order. JA4_c sorts, this
+// must not.
 func buildJA4Sc(exts []uint16) string {
 	if len(exts) == 0 {
 		return "000000000000"

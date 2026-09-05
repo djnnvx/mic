@@ -20,18 +20,15 @@ import (
 // JA4S well-formed shape: t<2-digit ver><2-digit ext-count><alpn>_<4-hex cipher>_<12-hex hash>
 var ja4sShape = regexp.MustCompile(`^t\d{2}\d{2}[a-z0-9]{2}_[0-9a-f]{4}_[0-9a-f]{12}$`)
 
-// Baselines: the JA4S mic emits today using stdlib crypto/tls (Go 1.25).
-// These are observation pins. If they drift, either stdlib's TLS behavior
-// changed or our parser broke. Verify with the captured value before updating.
+// Baselines pinned from stdlib crypto/tls (Go 1.25). Drift means stdlib TLS
+// behavior changed or the parser broke. Verify the captured value before
+// updating.
 const (
 	baselineJA4S_ServerFront = "t130200_1301_a56c5b993250"
 	baselineJA4S_ClientFront = "t130200_1301_a56c5b993250"
 )
 
-// TestServerFront_JA4S_Baseline measures the JA4S mic emits when terminating
-// TLS as a server (server-front mode) using stdlib crypto/tls. No spoofing.
-//
-//	test client → TLS → mic (ServerFrontHandler, tls.Server) → httptest backend
+// test client → TLS → mic (ServerFrontHandler, tls.Server) → httptest backend
 func TestServerFront_JA4S_Baseline(t *testing.T) {
 	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
@@ -86,11 +83,7 @@ func TestServerFront_JA4S_Baseline(t *testing.T) {
 	}
 }
 
-// TestClientFront_JA4S_Baseline measures the JA4S mic emits when serving the
-// MitM cert in client-front mode (the proxy presents an issued leaf cert to
-// the client after the CONNECT).
-//
-//	test client → TCP CONNECT → mic (HttpsHandler, tls.Server with issued cert) → upstream
+// test client → TCP CONNECT → mic (HttpsHandler, tls.Server with issued cert) → upstream
 func TestClientFront_JA4S_Baseline(t *testing.T) {
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
@@ -119,8 +112,6 @@ func TestClientFront_JA4S_Baseline(t *testing.T) {
 
 	// Pin a deterministic upstream fingerprint so dialTarget never picks a
 	// randomized ClientHello with curves the test backend can't negotiate.
-	// The choice is irrelevant to JA4S, which only measures the ServerHello
-	// mic writes back to the test client.
 	fp, err := fingerprint.ByName("chrome-120")
 	if err != nil {
 		t.Fatalf("fingerprint.ByName: %v", err)
@@ -145,8 +136,6 @@ func TestClientFront_JA4S_Baseline(t *testing.T) {
 			return
 		}
 
-		// Now do the TLS handshake with mic; mic will emit a ServerHello with
-		// the per-host cert it just issued.
 		tlsConn := tls.Client(conn, &tls.Config{
 			ServerName: "127.0.0.1",
 			RootCAs:    micCAPool,

@@ -16,8 +16,8 @@ import (
 	"github.com/djnnvx/mic/fingerprint"
 )
 
-// teeConn tees all bytes read from it into an io.Writer, letting us capture
-// the raw ClientHello while tls.Server reads from the connection normally.
+// teeConn copies every byte read into an io.Writer, capturing the raw
+// ClientHello while tls.Server reads normally.
 type teeConn struct {
 	net.Conn
 	r io.Reader
@@ -25,15 +25,10 @@ type teeConn struct {
 
 func (tc *teeConn) Read(b []byte) (int, error) { return tc.r.Read(b) }
 
-// captureJA4Server starts a TLS listener that captures the JA4 fingerprint
-// from each incoming connection's ClientHello and sends it on the returned channel.
-// The server also serves a minimal HTTP/1.1 200 response so callers can complete
-// their request without stalling.
-//
-// The returned addr is "localhost:PORT" (not "127.0.0.1:PORT") so that
-// dialTarget uses a hostname SNI rather than an IP address. This matches the
-// "d" (domain) indicator in the stored JA4 fingerprint table, which was
-// measured against tlsinfo.me, also a hostname.
+// captureJA4Server starts a TLS listener that computes the JA4 of each incoming
+// ClientHello and sends it on the returned channel. It answers HTTP/1.1 200 so
+// callers do not stall. addr is "localhost:PORT" so dialTarget sends a hostname
+// SNI, matching the "d" (domain) indicator in the stored JA4 table.
 func captureJA4Server(t *testing.T) (addr string, certPool *x509.CertPool, ja4s <-chan string) {
 	t.Helper()
 

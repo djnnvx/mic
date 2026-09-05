@@ -32,8 +32,6 @@ type Proxy struct {
 
 type Handler func(conn net.Conn, p *Proxy)
 
-// dialTarget dials host (host:port) and returns a uTLS connection after a
-// successful handshake. Falls back to HelloRandomized when no fingerprint is set.
 func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 	tcpConn, err := net.DialTimeout("tcp", host, dialTimeout)
 	if err != nil {
@@ -64,9 +62,8 @@ func (p *Proxy) dialTarget(host string) (*utls.UConn, error) {
 	return uconn, nil
 }
 
-// bufferedConn pairs a net.Conn with a bufio.Reader that may already contain
-// data read ahead from the underlying conn (e.g. after http.ReadRequest).
-// Reads come from the buffer; writes and Close go to the conn.
+// bufferedConn reads from a bufio.Reader that may already hold bytes read ahead
+// from the conn (e.g. by http.ReadRequest). Writes and Close go to the conn.
 type bufferedConn struct {
 	r *bufio.Reader
 	net.Conn
@@ -88,8 +85,8 @@ type halfCloser interface {
 	CloseWrite() error
 }
 
-// closeWrite shuts down only the write side so the peer still sees the data
-// already sent. Falls back to a full Close when half-close is unavailable.
+// closeWrite shuts down only the write side so the peer still receives the data
+// already sent.
 func closeWrite(c io.Closer) {
 	if hc, ok := c.(halfCloser); ok && hc.CloseWrite() == nil {
 		return
@@ -97,10 +94,9 @@ func closeWrite(c io.Closer) {
 	c.Close()
 }
 
-// pipe copies bidirectionally between a and b. A finished direction only
-// half-closes its write side: a client that shuts down its write end after
-// sending a request must still receive the response. Both ends are fully
-// closed once both directions are done.
+// pipe copies both directions. A finished direction only half-closes its write
+// side: a client that shut its write end after sending a request must still
+// receive the response.
 func pipe(a, b io.ReadWriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)

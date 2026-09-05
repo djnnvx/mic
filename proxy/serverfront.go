@@ -22,7 +22,6 @@ func ServerFrontHandler(certFile, keyFile string) (Handler, error) {
 	return func(clientConn net.Conn, p *Proxy) {
 		defer clientConn.Close()
 
-		// Terminate incoming TLS with stdlib crypto/tls.
 		tlsConn := tls.Server(clientConn, tlsCfg)
 		if err := tlsConn.Handshake(); err != nil {
 			log.Printf("ServerFront: TLS handshake with client failed: %v", err)

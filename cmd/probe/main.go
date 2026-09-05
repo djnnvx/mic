@@ -1,5 +1,5 @@
-// probe dials tlsinfo.me/json with each known utls preset and prints the
-// JA4 hash that the server observes. Run once to populate the fingerprint table.
+// probe prints the JA4 hash tlsinfo.me observes for each mic profile, to
+// populate the fingerprint table.
 package main
 
 import (
@@ -8,40 +8,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
+	"slices"
 
 	utls "github.com/bogdanfinn/utls"
 	"golang.org/x/net/http2"
-)
 
-var presets = []struct {
-	name string
-	id   utls.ClientHelloID
-}{
-	// Chrome
-	{"HelloChrome_120", utls.HelloChrome_120},
-	{"HelloChrome_120_PQ", utls.HelloChrome_120_PQ},
-	{"HelloChrome_131", utls.HelloChrome_131},
-	{"HelloChrome_133", utls.HelloChrome_133},
-	// Firefox
-	{"HelloFirefox_120", utls.HelloFirefox_120},
-	// Safari / iOS
-	{"HelloSafari_15_6_1", utls.HelloSafari_15_6_1},
-	{"HelloSafari_16_0", utls.HelloSafari_16_0},
-	{"HelloIOS_15_5", utls.HelloIOS_15_5},
-	{"HelloIOS_15_6", utls.HelloIOS_15_6},
-	{"HelloIOS_16_0", utls.HelloIOS_16_0},
-	// Edge
-	{"HelloEdge_85", utls.HelloEdge_85},
-	{"HelloEdge_106", utls.HelloEdge_106},
-	// Opera
-	{"HelloOpera_89", utls.HelloOpera_89},
-	{"HelloOpera_90", utls.HelloOpera_90},
-	{"HelloOpera_91", utls.HelloOpera_91},
-	// Android
-	{"HelloAndroid_11_OkHttp", utls.HelloAndroid_11_OkHttp},
-}
+	"github.com/djnnvx/mic/fingerprint"
+)
 
 func dialUTLS(ctx context.Context, id utls.ClientHelloID) (*utls.UConn, error) {
 	tcpConn, err := (&net.Dialer{}).DialContext(ctx, "tcp", "tlsinfo.me:443")
@@ -75,9 +51,7 @@ func probe(id utls.ClientHelloID) (string, error) {
 	defer uconn.Close()
 
 	if uconn.ConnectionState().NegotiatedProtocol == "h2" {
-		// Reuse the already-established uconn rather than letting the Transport
-		// dial again. The first handshake is the one that produced the JA4 we
-		// want to measure.
+		// Reuse the handshaked uconn. A Transport redial would measure a different handshake.
 		cc, err := (&http2.Transport{}).NewClientConn(uconn)
 		if err != nil {
 			return "", err
@@ -106,12 +80,12 @@ func probe(id utls.ClientHelloID) (string, error) {
 }
 
 func main() {
-	for _, p := range presets {
-		ja4, err := probe(p.id)
+	for _, name := range slices.Sorted(maps.Keys(fingerprint.NameTable)) {
+		ja4, err := probe(fingerprint.NameTable[name])
 		if err != nil {
-			fmt.Printf("%-22s  ERROR: %v\n", p.name, err)
+			fmt.Printf("%-22s  ERROR: %v\n", name, err)
 			continue
 		}
-		fmt.Printf("%-22s  %s\n", p.name, ja4)
+		fmt.Printf("%-22s  %s\n", name, ja4)
 	}
 }

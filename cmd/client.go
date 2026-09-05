@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// proxyURL renders a listen address as something a user can paste into curl -x.
-// A bare ":8080" needs a host.
 func proxyURL(listen string) string {
 	if strings.HasPrefix(listen, ":") {
 		return "localhost" + listen

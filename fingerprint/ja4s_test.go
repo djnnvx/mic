@@ -7,11 +7,8 @@ import (
 	"testing"
 )
 
-// buildServerHello synthesizes a minimal TLS handshake record carrying a
-// ServerHello, returned as raw bytes ready for ParseServerHello.
-//
-// extensions is the wire-encoded extensions block (type + len + data tuples),
-// pre-built so each test can choose exactly what to include and in what order.
+// buildServerHello synthesizes a TLS handshake record carrying a ServerHello.
+// extensions is the wire-encoded extensions block (type + len + data tuples).
 func buildServerHello(legacyVer uint16, sessionIDLen int, cipher uint16, extensions []byte) []byte {
 	var body bytes.Buffer
 
@@ -46,8 +43,6 @@ func ext(t uint16, data []byte) []byte {
 }
 
 func TestParseServerHello_TLS13_Minimal(t *testing.T) {
-	// TLS 1.3 ServerHello: supported_versions(0x002b) carries the chosen 0x0304,
-	// plus key_share(0x0033) with empty data.
 	var exts []byte
 	exts = append(exts, ext(0x002b, []byte{0x03, 0x04})...) // chosen version
 	exts = append(exts, ext(0x0033, []byte{})...)           // key_share (data irrelevant)
@@ -74,7 +69,6 @@ func TestParseServerHello_TLS13_Minimal(t *testing.T) {
 }
 
 func TestParseServerHello_TLS13_WithALPN_h2(t *testing.T) {
-	// ALPN extension carrying a single chosen protocol "h2".
 	alpnList := []byte{0x00, 0x03, 0x02, 'h', '2'}
 
 	var exts []byte
@@ -94,8 +88,7 @@ func TestParseServerHello_TLS13_WithALPN_h2(t *testing.T) {
 }
 
 func TestParseServerHello_TLS12_NoSupportedVersions(t *testing.T) {
-	// TLS 1.2 ServerHello: legacy_version is the chosen version. No
-	// supported_versions extension. Often has session_ticket(0x0023) etc.
+	// Pre-1.3, legacy_version is the chosen version.
 	exts := ext(0x0023, []byte{}) // session_ticket, empty
 	raw := buildServerHello(0x0303, 32, 0xc02f, exts)
 
@@ -115,7 +108,6 @@ func TestParseServerHello_TLS12_NoSupportedVersions(t *testing.T) {
 }
 
 func TestParseServerHello_GREASEFiltered(t *testing.T) {
-	// GREASE extension type 0x0a0a should not appear in the parsed list.
 	var exts []byte
 	exts = append(exts, ext(0x0a0a, []byte{})...) // GREASE
 	exts = append(exts, ext(0x002b, []byte{0x03, 0x04})...)
@@ -165,8 +157,7 @@ func TestParseServerHello_Errors(t *testing.T) {
 }
 
 func TestComputeJA4S_Shape(t *testing.T) {
-	// Synthesize a typical TLS 1.3 ServerHello with [supported_versions, key_share]
-	// and assert the output shape: t<ver><nn><alpn>_<cipher>_<12hex>
+	// Shape: t<ver><nn><alpn>_<cipher>_<12hex>
 	sh := &ServerHelloFields{
 		LegacyVersion:    0x0303,
 		CipherSuite:      0x1301,

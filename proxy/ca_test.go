@@ -107,8 +107,8 @@ func TestIssueCert_Caches(t *testing.T) {
 	}
 }
 
-// A MitM leaf must never be usable as a CA. This is the property that lets an
-// attacker with the leaf key mint certs for any host, so assert it directly.
+// A MitM leaf must never be usable as a CA: the leaf key could then mint certs
+// for any host.
 func TestIssueCert_LeafIsNotACA(t *testing.T) {
 	ca, err := GenerateCA()
 	if err != nil {

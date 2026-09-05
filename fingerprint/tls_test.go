@@ -41,6 +41,8 @@ func TestNameTable_HasExpectedProfiles(t *testing.T) {
 		"edge-85", "edge-106",
 		"opera-91",
 		"android-11-okhttp",
+		"ipad-15",
+		"qq-11", "360-7", "360-11",
 	}
 	for _, name := range expected {
 		if _, ok := fingerprint.NameTable[name]; !ok {

@@ -10,13 +10,10 @@ import (
 )
 
 // Bounds the CONNECT header read only, never the proxied stream.
-// Tunable: tests lower it to keep the suite fast.
 var headerReadTimeout = 10 * time.Second
 
-// parseAuthority extracts the server name and a dial-ready "host:port" from
-// a CONNECT request's authority. If the input lacks an explicit port (rare,
-// since CONNECT requires one), 443 is assumed. IPv6 literals in brackets are
-// handled (e.g. "[::1]:443" -> "::1", "[::1]:443").
+// parseAuthority splits a CONNECT authority into a server name and a dial-ready
+// "host:port", assuming port 443 and stripping IPv6 brackets when needed.
 func parseAuthority(authority string) (server, hostPort string) {
 	if h, _, err := net.SplitHostPort(authority); err == nil {
 		return h, authority
@@ -64,10 +61,8 @@ func HttpsHandler(clientConn net.Conn, p *Proxy) {
 			return
 		}
 
-		// Mirror the ALPN negotiated with the target so the client uses the same
-		// application protocol. Without this, Chrome-fingerprint uTLS often
-		// negotiates h2 with the target while the client sends HTTP/1.1, causing
-		// an immediate protocol error.
+		// Mirror the ALPN negotiated with the target: otherwise uTLS often
+		// negotiates h2 upstream while the client speaks HTTP/1.1, which fails.
 		nextProtos := []string{"http/1.1"}
 		if proto := targetConn.ConnectionState().NegotiatedProtocol; proto != "" {
 			nextProtos = []string{proto}

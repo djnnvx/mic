@@ -8,9 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loadCAPool reads a PEM bundle into a cert pool. AppendCertsFromPEM reports
-// failure only through its return value, and an empty pool makes every upstream
-// handshake fail with "unknown authority" instead of naming the real cause.
 func loadCAPool(path string) (*x509.CertPool, error) {
 	pem, err := os.ReadFile(path)
 	if err != nil {

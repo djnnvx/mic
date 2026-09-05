@@ -15,10 +15,11 @@ import (
 )
 
 // Values measured empirically via cmd/probe against tlsinfo.me.
-// chrome-120-pq and chrome-131 are absent: they emit the same JA4 as chrome-120
-// because JA4 does not distinguish the X25519MLKEM768 key share.
+// chrome-120, chrome-120-pq and chrome-131 share a hash. JA4 ignores key share entries.
 var expectedJA4 = map[string]string{
 	"chrome-120":        "t13d1516h2_8daaf6152771_02713d6af862",
+	"chrome-120-pq":     "t13d1516h2_8daaf6152771_02713d6af862",
+	"chrome-131":        "t13d1516h2_8daaf6152771_02713d6af862",
 	"chrome-133":        "t13d1516h2_8daaf6152771_d8a2da3f94cd",
 	"firefox-120":       "t13d1715h2_5b57614c22b0_5c2c66f702b0",
 	"safari-16":         "t13d2014h2_a09f3c656075_14788d8d241b",
@@ -27,12 +28,13 @@ var expectedJA4 = map[string]string{
 	"edge-106":          "t13d1516h2_8daaf6152771_e5627efa2ab1",
 	"opera-91":          "t13d1516h2_8daaf6152771_e5627efa2ab1",
 	"android-11-okhttp": "t12d120700_d34a8e72043a_036209cd1ead",
+	"ipad-15":           "t13d2014h2_a09f3c656075_14788d8d241b",
+	"qq-11":             "t13d1516h2_8daaf6152771_e5627efa2ab1",
+	"360-7":             "t12d2010s2_0bf03fa604e3_736b2a1ed4d3",
+	"360-11":            "t13d1616h2_46e7e9700bed_4551aecd7b38",
 }
 
-// TestClientFront_JA4 verifies that each fingerprint profile produces the
-// expected JA4 on outbound connections in client-front (HTTP CONNECT) mode.
-//
-//	test client → TCP CONNECT → proxy (HttpsHandler) → uTLS(profile) → captureJA4Server
+// test client → TCP CONNECT → proxy (HttpsHandler) → uTLS(profile) → captureJA4Server
 func TestClientFront_JA4(t *testing.T) {
 	for name, want := range expectedJA4 {
 		name, want := name, want
@@ -60,7 +62,6 @@ func TestClientFront_JA4(t *testing.T) {
 				t.Fatalf("CONNECT: status=%d err=%v", status, err)
 			}
 
-			// Send a plain HTTP request through the uTLS tunnel the proxy established.
 			fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", captureAddr)
 			io.Copy(io.Discard, conn) //nolint:errcheck
 
@@ -71,10 +72,7 @@ func TestClientFront_JA4(t *testing.T) {
 	}
 }
 
-// TestServerFront_JA4 verifies that each fingerprint profile produces the
-// expected JA4 on outbound connections in server-front (TLS termination) mode.
-//
-//	test client → TLS → proxy (ServerFrontHandler) → uTLS(profile) → captureJA4Server
+// test client → TLS → proxy (ServerFrontHandler) → uTLS(profile) → captureJA4Server
 func TestServerFront_JA4(t *testing.T) {
 	for name, want := range expectedJA4 {
 		name, want := name, want

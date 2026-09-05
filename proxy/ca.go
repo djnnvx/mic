@@ -53,8 +53,6 @@ func LoadOrGenerateCA(certPath, keyPath string) (*LocalCA, error) {
 	if certPath == "" && keyPath == "" {
 		return GenerateCA()
 	}
-	// A half-specified pair used to silently return an ephemeral CA that was
-	// never written, so callers told users to import a file that never existed.
 	if certPath == "" || keyPath == "" {
 		return nil, fmt.Errorf("CA cert path and key path must both be set or both be empty")
 	}
@@ -147,22 +145,21 @@ func (ca *LocalCA) Save(certPath, keyPath string) error {
 		return err
 	}
 	defer kf.Close()
-	// O_CREATE's mode is ignored when the file already exists, and the mode of a
-	// new file is masked by umask, so set it explicitly either way.
+	// O_CREATE's mode is ignored for an existing file and masked by umask for a
+	// new one, so set 0600 explicitly.
 	if err := kf.Chmod(0o600); err != nil {
 		return err
 	}
 	return pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 }
 
-// CertPEM returns the CA certificate as PEM, suitable for curl --cacert or
-// importing into a system trust store.
+// CertPEM returns the CA certificate as PEM for curl --cacert or a trust store.
 func (ca *LocalCA) CertPEM() []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.derCert})
 }
 
-// issueCert returns a leaf certificate for host signed by the CA, issuing a new
-// one when the host is unseen or its cached leaf is at or near expiry.
+// issueCert returns a cached leaf for host, re-issuing when it is unseen or
+// near expiry.
 func (ca *LocalCA) issueCert(host string) (tls.Certificate, error) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()

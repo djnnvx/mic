@@ -8,7 +8,7 @@ import (
 	utls "github.com/bogdanfinn/utls"
 )
 
-// NameTable maps human-readable profile names to utls ClientHelloID presets.
+// NameTable maps profile names to utls ClientHelloID presets.
 var NameTable = map[string]utls.ClientHelloID{
 	"chrome-120":        utls.HelloChrome_120,
 	"chrome-120-pq":     utls.HelloChrome_120_PQ,
@@ -21,6 +21,10 @@ var NameTable = map[string]utls.ClientHelloID{
 	"edge-106":          utls.HelloEdge_106,
 	"opera-91":          utls.HelloOpera_91,
 	"android-11-okhttp": utls.HelloAndroid_11_OkHttp,
+	"ipad-15":           utls.HelloIPad_15_6,
+	"qq-11":             utls.HelloQQ_11_1,
+	"360-7":             utls.Hello360_7_5,
+	"360-11":            utls.Hello360_11_0,
 }
 
 type TLSFingerprint struct {

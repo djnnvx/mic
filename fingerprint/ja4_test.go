@@ -8,9 +8,8 @@ import (
 	"testing"
 )
 
-// buildClientHello synthesizes a TLS handshake record carrying a ClientHello,
-// returned as raw bytes ready for ParseClientHello. extensions is the
-// wire-encoded extensions block (use ext() + the *Data helpers below).
+// buildClientHello synthesizes a TLS handshake record carrying a ClientHello.
+// extensions is the wire-encoded extensions block (see ext() and the *Data helpers).
 func buildClientHello(legacyVer uint16, ciphers []uint16, extensions []byte) []byte {
 	var body bytes.Buffer
 
@@ -108,8 +107,8 @@ func TestParseClientHello_Fields(t *testing.T) {
 	}
 }
 
-// An IP literal in SNI is still an SNI extension, so JA4_a stays "d".
-// The spec keys on extension presence, never on the value.
+// The spec keys on SNI extension presence, never on the value, so an IP literal
+// still yields "d".
 func TestComputeJA4_a_SNI_IPLiteral(t *testing.T) {
 	exts := ext(0x0000, sniData("192.0.2.1"))
 	ch, err := ParseClientHello(buildClientHello(0x0303, []uint16{0x1301}, exts))
@@ -150,7 +149,6 @@ func TestTLSVersionStr(t *testing.T) {
 }
 
 // The 8 hex-fallback examples from the FoxIO spec, plus the plain cases.
-// Checked end to end so the ALPN bytes travel through the parser.
 func TestComputeJA4_a_ALPNValues(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -190,7 +188,7 @@ func TestBuildJA4b_EmptyCiphers(t *testing.T) {
 	}
 }
 
-// Only SNI and ALPN present: both are filtered out, so JA4_c has no values.
+// 0x0000 and 0x0010 are both filtered out, leaving JA4_c with no values.
 func TestBuildJA4c_EmptyFilteredExts(t *testing.T) {
 	if got := buildJA4c([]uint16{0x0000, 0x0010}, []uint16{0x0403}); got != "000000000000" {
 		t.Errorf("buildJA4c = %q; want 000000000000", got)
@@ -243,9 +241,8 @@ func TestParseClientHello_Errors(t *testing.T) {
 	}
 }
 
-// TestComputeJA4_KnownFixture pins the JA4 of realisticClientHello(). JA4_a is
-// human-readable. The two hashes are checked against their spec preimages,
-// independently verifiable with: printf '%s' '<preimage>' | sha256sum.
+// Hashes are checked against their spec preimages, independently verifiable
+// with: printf '%s' '<preimage>' | sha256sum.
 func TestComputeJA4_KnownFixture(t *testing.T) {
 	ch, err := ParseClientHello(realisticClientHello())
 	if err != nil {
@@ -342,8 +339,8 @@ func TestComputeJA4_a_Indicators(t *testing.T) {
 	}
 }
 
-// Both hash fields hit the no-values sentinel: no ciphers, and the only two
-// extensions are the ones JA4_c filters out.
+// Both hash fields hit the no-values sentinel: no ciphers, and every extension
+// is one JA4_c filters out.
 func TestComputeJA4_BothSentinels(t *testing.T) {
 	exts := append(ext(0x0000, sniData("example.com")), ext(0x0010, alpnData("h2"))...)
 	ch, err := ParseClientHello(buildClientHello(0x0303, nil, exts))

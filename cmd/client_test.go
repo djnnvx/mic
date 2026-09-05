@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// run executes the client command with args, using an unroutable listen port so
-// that anything reaching p.Run() fails there instead of binding a real socket.
+// runClient uses an invalid port so p.Run() fails instead of binding a socket.
 func runClient(t *testing.T, args ...string) error {
 	t.Helper()
 	c := newClientCmd()

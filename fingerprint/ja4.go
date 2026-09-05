@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// noValues is the JA4 placeholder for a field with no values. The spec uses it
-// rather than sha256 of the empty string so an empty field is visible.
+// noValues is the JA4 placeholder for an empty field. The spec uses it instead
+// of sha256 of the empty string.
 const noValues = "000000000000"
 
 // ClientHelloFields holds the parsed TLS ClientHello data used to compute JA4.
@@ -30,9 +30,8 @@ func isGREASE(v uint16) bool {
 	return v&0x0f == 0x0a && v>>8 == v&0xff
 }
 
-// handshakeBody unwraps the TLS record and handshake headers from raw,
-// verifying the record content type, the handshake type, and length fields.
-// It returns the handshake body. tag prefixes errors ("ja4" or "ja4s").
+// handshakeBody unwraps the TLS record and handshake headers from raw, verifying
+// content type, handshake type and lengths. tag prefixes errors ("ja4" or "ja4s").
 func handshakeBody(raw []byte, hsType byte, tag string) ([]byte, error) {
 	if len(raw) < 5 {
 		return nil, fmt.Errorf("%s: record too short (%d bytes)", tag, len(raw))
@@ -267,10 +266,9 @@ func buildJA4a(ch *ClientHelloFields) string {
 	return fmt.Sprintf("t%s%s%02d%02d%s", tlsVer, sniChar, nc, ne, alpn)
 }
 
-// alpnChars is the two-character ALPN field: the first and last bytes of the
-// value. If either end byte is not ASCII alphanumeric, the whole value is
-// hex-encoded and the first and last characters of that hex string are used.
-// This also keeps client-controlled raw bytes out of the fingerprint.
+// alpnChars is the two-character ALPN field: first and last byte of the value.
+// If either end byte is not ASCII alphanumeric, hex-encode the whole value and
+// take the first and last hex characters instead.
 func alpnChars(v string) string {
 	if v == "" {
 		return "00"
@@ -287,7 +285,7 @@ func isALPNAlnum(b byte) bool {
 	return b >= '0' && b <= '9' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
 }
 
-// min99 caps n at 99, the maximum that fits in the two-digit JA4_a counter.
+// min99 caps n at 99, the max for the two-digit JA4_a counter.
 func min99(n int) int {
 	if n > 99 {
 		return 99
@@ -335,9 +333,8 @@ func buildJA4b(ciphers []uint16) string {
 	return fmt.Sprintf("%x", h)[:12]
 }
 
-// buildJA4c hashes sorted extension types (excluding SNI and ALPN, which vary
-// per-connection) then signature algorithms in wire order. Sorting is what
-// distinguishes JA4 from the raw JA4_r variant.
+// buildJA4c hashes sorted extension types (SNI and ALPN excluded) then signature
+// algorithms in wire order. Sorting is what distinguishes JA4 from JA4_r.
 func buildJA4c(exts []uint16, sigAlgs []uint16) string {
 	var filtered []uint16
 	for _, e := range exts {
@@ -356,7 +353,6 @@ func buildJA4c(exts []uint16, sigAlgs []uint16) string {
 	}
 	preimage := strings.Join(extParts, ",")
 
-	// No separator at all when there are no signature algorithms.
 	if len(sigAlgs) > 0 {
 		sigParts := make([]string, len(sigAlgs))
 		for i, s := range sigAlgs {
